@@ -1,0 +1,52 @@
+databases:
+  # 1. Managed PostgreSQL Database
+  - name: kalyan-postgres
+    plan: free # Change to starter/standard for production
+    region: oregon # or frankfurt, ohio, singapore
+    databaseName: kalyandb
+    user: kalyan_admin
+
+services:
+  # 2. FastAPI Backend Service
+  - type: web
+    name: kalyan-api
+    env: python
+    region: oregon
+    plan: free
+    rootDir: admin-backend
+    # bootstrap() is idempotent: it never wipes data. (`python -m app.seed` is a destructive demo reset -- do not run it here.)
+    buildCommand: pip install -r requirements.txt && alembic upgrade head && python -c "from app.seed import bootstrap; bootstrap()"
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        fromDatabase:
+          name: kalyan-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true # Render will generate a random string
+      - key: CORS_ORIGINS
+        sync: false # Set in the Render dashboard to the frontend URL(s), comma-separated. Never "*".
+      - key: APP_ENV
+        value: production
+      - key: ADMIN_INITIAL_PASSWORD
+        sync: false # Required on first deploy (min 12 chars); only used when no admin exists yet.
+      - key: JWT_ALG
+        value: HS256
+      - key: JWT_TTL_MIN
+        value: 480
+
+  # 3. Next.js Frontend Service
+  - type: web
+    name: kalyan-frontend
+    env: node
+    region: oregon
+    plan: free
+    rootDir: admin-frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: BACKEND_URL
+        value: kalyan-api-nkgm.onrender.com
+
