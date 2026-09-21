@@ -8,6 +8,9 @@ on app startup.
 """
 from __future__ import annotations
 
+import os
+import secrets
+import sys
 from datetime import date, datetime, time, timedelta, timezone
 
 from app.core.rbac_catalog import PERMISSIONS, ROLE_NAMES, ROLE_PERMISSIONS
@@ -54,25 +57,7 @@ GAME_TYPES = [
 
 
 def _place_bet(db, *, user, market, game_type, slot=None, stage=None, selection, credits, rate):
-    batch = SimulationBatch(
-        user_id=user.id, market_id=market.id, slot_id=slot.id if slot else None,
-        game_type_id=game_type.id, stage=stage, created_via="admin_manual",
-    )
-    db.add(batch)
-    db.flush()
-    entry = SimulationEntry(
-        batch_id=batch.id, user_id=user.id, market_id=market.id, slot_id=slot.id if slot else None,
-        game_type_id=game_type.id, stage=stage, selection=selection,
-        simulated_credits=credits, simulated_rate=rate,
-        simulated_return=vs.compute_simulated_return(credits, rate), status="Pending",
-    )
-    db.add(entry)
-    db.flush()
-    credit_service.apply_ledger_entry(
-        db, user=user, type="stake", amount=-credits, reference_type="simulation_batch",
-        reference_id=str(batch.id), note=f"{game_type.code} {selection} on {market.name}",
-    )
-    return entry
+    pass
 
 
 def _publish_result(db, *, market, admin_id, slot=None, days_ago=0, open_panna=None, open_ank=None,
@@ -105,7 +90,50 @@ def _publish_result(db, *, market, admin_id, slot=None, days_ago=0, open_panna=N
     return result
 
 
-def wipe_and_reseed() -> None:
+def _admin_password(min_len: int = 12) -> tuple[str, bool]:
+    """(password, was_generated) -- from ADMIN_INITIAL_PASSWORD, else a random one."""
+    pw = os.environ.get("ADMIN_INITIAL_PASSWORD", "")
+    if pw:
+        if len(pw) < min_len:
+            sys.exit(f"ADMIN_INITIAL_PASSWORD must be at least {min_len} characters.")
+        return pw, False
+    return secrets.token_urlsafe(16), True
+
+
+def bootstrap() -> None:
+    """Idempotent, non-destructive production setup (safe to run on every deploy):
+    syncs the permission catalog and creates the first super admin only if no admin exists.
+    Roles/permissions normally come from Alembic; this fills in anything added since."""
+    db = SessionLocal()
+    try:
+        known = {p.code for p in db.query(Permission).all()}
+        roles = {r.slug: r for r in db.query(Role).all()}
+        desc = dict(PERMISSIONS)
+        for code in desc:
+            if code in known:
+                continue
+            perm = Permission(code=code, description=desc[code])
+            db.add(perm)
+            db.flush()
+            # Newly added permission: grant to the built-in roles that ship with it.
+            for slug, codes in ROLE_PERMISSIONS.items():
+                if code in codes and slug in roles:
+                    db.add(RolePermission(role_id=roles[slug].id, permission_id=perm.id))
+
+        if db.query(Admin).count() == 0:
+            password, generated = _admin_password()
+            db.add(Admin(name="Super Admin", email="admin@kalyan.com", password_hash=hash_password(password),
+                         role="super_admin", status="active"))
+            print("Created super admin admin@kalyan.com" + (f" with generated password: {password}  (change it now)" if generated else ""))
+        db.commit()
+    finally:
+        db.close()
+
+
+def wipe_and_reseed(force: bool = False) -> None:
+    """DESTRUCTIVE demo reset. Refuses to touch a non-SQLite database unless forced."""
+    if not engine.url.get_backend_name().startswith("sqlite") and not force:
+        sys.exit("Refusing to wipe a non-SQLite database. Pass --force if you really mean it (this deletes ALL data).")
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
@@ -136,9 +164,10 @@ def wipe_and_reseed() -> None:
             db.query(model).delete()
         db.commit()
 
+        demo_admin_pw, generated = _admin_password()
         admin = Admin(
             name="Super Admin", email="admin@kalyan.com",
-            password_hash=hash_password("admin123"), role="super_admin", status="active",
+            password_hash=hash_password(demo_admin_pw), role="super_admin", status="active",
         )
         db.add(admin)
         db.flush()
@@ -280,73 +309,7 @@ def wipe_and_reseed() -> None:
         db.add(Rate(market_id=weekend_special.id, game_type_id=gt[vs.JODI].id, rate=950, effective_from=today, status="Active"))
         db.flush()
 
-        # --- Users (learners) ---
-        user_specs = [
-            ("Aman Jha", "8076580694", "aman@example.com", 10_000, "active"),
-            ("Vijendra Mewada", "8815306802", "vj@example.com", 5_000, "active"),
-            ("Priya Sharma", "9812345678", "priya@example.com", 7_500, "active"),
-            ("Rohan Verma", "9900112233", "rohan@example.com", 3_200, "active"),
-            ("Sneha Patel", "9123456780", "sneha@example.com", 12_000, "active"),
-            ("Karan Singh", "9988776655", "karan@example.com", 500, "disabled"),
-            ("Anita Desai", "9871234560", "anita@example.com", 4_500, "active"),
-            ("Vikram Rao", "9090909090", "vikram@example.com", 8_800, "active"),
-        ]
-        users = [
-            User(name=name, phone=phone, email=email, password_hash=hash_password("user12345"),
-                 status=status_, balance=balance)
-            for name, phone, email, balance, status_ in user_specs
-        ]
-        db.add_all(users)
-        db.flush()
-        u = {name.split()[0].lower(): user for (name, *_), user in zip(user_specs, users)}
-        for user in users:
-            db.add(CreditLedger(user_id=user.id, type="grant", amount=user.balance,
-                                 balance_after=user.balance, reference_type="seed", note="Initial learning credits"))
-        db.flush()
 
-        # --- Simulation history: MILAN DAY, 2 days ago (resolved) ---
-        _place_bet(db, user=u["aman"], market=milan_day, game_type=gt[vs.SINGLE], stage="OPEN", selection="8", credits=50, rate=RATE_BY_CODE[vs.SINGLE])
-        _place_bet(db, user=u["priya"], market=milan_day, game_type=gt[vs.SINGLE_PANNA], stage="OPEN", selection="459", credits=30, rate=RATE_BY_CODE[vs.SINGLE_PANNA])
-        _place_bet(db, user=u["rohan"], market=milan_day, game_type=gt[vs.JODI], selection="89", credits=100, rate=RATE_BY_CODE[vs.JODI])
-        _place_bet(db, user=u["sneha"], market=milan_day, game_type=gt[vs.JODI], selection="12", credits=80, rate=RATE_BY_CODE[vs.JODI])
-        _place_bet(db, user=u["vikram"], market=milan_day, game_type=gt[vs.DOUBLE_PANNA], stage="OPEN", selection="224", credits=40, rate=RATE_BY_CODE[vs.DOUBLE_PANNA])
-        _place_bet(db, user=u["anita"], market=milan_day, game_type=gt[vs.SINGLE], stage="CLOSE", selection="9", credits=60, rate=RATE_BY_CODE[vs.SINGLE])
-        _publish_result(db, market=milan_day, admin_id=admin.id, days_ago=2, open_panna="459", close_panna="234")
-
-        # --- MILAN DAY, yesterday (resolved) ---
-        _place_bet(db, user=u["aman"], market=milan_day, game_type=gt[vs.JODI], selection="16", credits=100, rate=RATE_BY_CODE[vs.JODI])
-        _place_bet(db, user=u["vijendra"], market=milan_day, game_type=gt[vs.SINGLE_PANNA], stage="OPEN", selection="123", credits=50, rate=RATE_BY_CODE[vs.SINGLE_PANNA])
-        _place_bet(db, user=u["priya"], market=milan_day, game_type=gt[vs.SINGLE], stage="OPEN", selection="1", credits=40, rate=RATE_BY_CODE[vs.SINGLE])
-        _place_bet(db, user=u["sneha"], market=milan_day, game_type=gt[vs.TRIPLE_PANNA], stage="CLOSE", selection="666", credits=20, rate=RATE_BY_CODE[vs.TRIPLE_PANNA])
-        _place_bet(db, user=u["vikram"], market=milan_day, game_type=gt[vs.SINGLE], stage="CLOSE", selection="6", credits=70, rate=RATE_BY_CODE[vs.SINGLE])
-        _place_bet(db, user=u["anita"], market=milan_day, game_type=gt[vs.DOUBLE_PANNA], stage="OPEN", selection="112", credits=25, rate=RATE_BY_CODE[vs.DOUBLE_PANNA])
-        _publish_result(db, market=milan_day, admin_id=admin.id, days_ago=1, open_panna="128", close_panna="600")
-
-        # --- MILAN DAY, today (still Pending -- market is OPEN, no result yet) ---
-        _place_bet(db, user=u["aman"], market=milan_day, game_type=gt[vs.SINGLE], stage="OPEN", selection="5", credits=50, rate=RATE_BY_CODE[vs.SINGLE])
-        _place_bet(db, user=u["vijendra"], market=milan_day, game_type=gt[vs.JODI], selection="27", credits=100, rate=RATE_BY_CODE[vs.JODI])
-        _place_bet(db, user=u["priya"], market=milan_day, game_type=gt[vs.DOUBLE_PANNA], stage="OPEN", selection="225", credits=40, rate=RATE_BY_CODE[vs.DOUBLE_PANNA])
-
-        # --- RAJDHANI DAY, yesterday (resolved, market now CLOSED) ---
-        _place_bet(db, user=u["rohan"], market=rajdhani_day, game_type=gt[vs.JODI], selection="43", credits=60, rate=RATE_BY_CODE[vs.JODI])
-        _place_bet(db, user=u["aman"], market=rajdhani_day, game_type=gt[vs.SINGLE], stage="OPEN", selection="4", credits=30, rate=RATE_BY_CODE[vs.SINGLE])
-        _place_bet(db, user=u["priya"], market=rajdhani_day, game_type=gt[vs.SINGLE_PANNA], stage="CLOSE", selection="111", credits=45, rate=RATE_BY_CODE[vs.SINGLE_PANNA])
-        _publish_result(db, market=rajdhani_day, admin_id=admin.id, days_ago=1, open_panna="257", close_panna="111")
-
-        # --- GALI, yesterday (resolved -- Gali/Disawar use direct ank, no panna) ---
-        _place_bet(db, user=u["anita"], market=gali, game_type=gt[vs.JODI], selection="48", credits=90, rate=RATE_BY_CODE[vs.JODI])
-        _place_bet(db, user=u["vikram"], market=gali, game_type=gt[vs.SINGLE], stage="OPEN", selection="4", credits=35, rate=RATE_BY_CODE[vs.SINGLE])
-        _place_bet(db, user=u["sneha"], market=gali, game_type=gt[vs.SINGLE], stage="CLOSE", selection="8", credits=55, rate=RATE_BY_CODE[vs.SINGLE])
-        _place_bet(db, user=u["rohan"], market=gali, game_type=gt[vs.JODI], selection="99", credits=20, rate=RATE_BY_CODE[vs.JODI])
-        _publish_result(db, market=gali, admin_id=admin.id, days_ago=1, open_ank="4", close_ank="8")
-
-        # --- Starline slot: one pending bet, no result declared yet ---
-        _place_bet(db, user=u["sneha"], market=starline_market, slot=slots[0], game_type=gt[vs.SINGLE_PANNA],
-                   selection="234", credits=25, rate=RATE_BY_CODE[vs.SINGLE_PANNA])
-
-        # --- A couple of manual admin credit adjustments, for ledger variety ---
-        credit_service.adjust_credits(db, u["karan"], -200, admin.id, "Correction: duplicate grant reversed")
-        credit_service.grant_credits(db, u["rohan"], 500, admin.id, "Bonus for referring a friend")
 
         # --- Content ---
         db.add_all([
@@ -405,9 +368,11 @@ def wipe_and_reseed() -> None:
 
         db.commit()
         print("Seed complete.")
+        if generated:
+            print(f"Demo admin: admin@kalyan.com / {demo_admin_pw}")
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    wipe_and_reseed()
+    wipe_and_reseed(force="--force" in sys.argv)
