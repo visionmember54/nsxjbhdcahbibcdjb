@@ -9,7 +9,6 @@ from app.db.base import Base
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
-
     id: Mapped[int] = mapped_column(primary_key=True)
     actor: Mapped[str] = mapped_column(String(120))
     action: Mapped[str] = mapped_column(String(60))
