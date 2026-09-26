@@ -40,6 +40,15 @@ def iso_ist(value: datetime | None) -> str | None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(IST).isoformat()
 
+def format_ist(value: datetime | None) -> str | None:
+    """Human-readable IST timestamp for history-style endpoints, e.g. "27-09-2026 10:15 AM".
+    Stored datetimes are naive UTC; treat them as such before converting to IST (see iso_ist)."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(IST).strftime("%d-%m-%Y %I:%M %p")
+
 
 def ist_day_bounds(day: date) -> tuple[datetime, datetime]:
     """[start, end) of an IST calendar day, as naive UTC datetimes comparable to stored columns."""

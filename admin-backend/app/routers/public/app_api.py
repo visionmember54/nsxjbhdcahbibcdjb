@@ -698,11 +698,18 @@ def gali_desawar_bets(payload: GaliDesawarBetRequest, current_user: User = Depen
 
 # --- History (own simulation entries) ---------------------------------------
 
-def _entry_out(entry: SimulationEntry, game_type_code: str, mask_status: bool = False) -> dict:
+# --- History (own simulation entries) ---------------------------------------
+
+_HISTORY_DATE_FMT = "%d-%m-%Y"
+_EARLIEST_HISTORY_DATE = date(2020, 1, 1)
+
+
+def _entry_out(entry: SimulationEntry, game_type_code: str, market_name: str) -> dict:
     return {
         "id": str(entry.id),
         "batchId": str(entry.batch_id),
         "marketId": str(entry.market_id),
+        "marketName": market_name,
         "gameType": game_type_code,
         "stage": entry.stage,
         "selection": entry.selection,
@@ -710,10 +717,124 @@ def _entry_out(entry: SimulationEntry, game_type_code: str, mask_status: bool = 
         "simulatedCredits": entry.simulated_credits,
         "simulatedRate": entry.simulated_rate,
         "simulatedReturn": entry.simulated_return,
-        "status": "SUCCESS" if mask_status else STATUS_TO_APP.get(entry.status, entry.status.upper()),
-        "createdAt": shape.iso_ist(entry.created_at),
-        "resolvedAt": shape.iso_ist(entry.resolved_at),
+        "status": STATUS_TO_APP.get(entry.status, entry.status.upper()),
+        "createdAt": shape.format_ist(entry.created_at),
+        "resolvedAt": shape.format_ist(entry.resolved_at),
     }
+
+
+def _parse_history_date(value: str) -> date:
+    try:
+        return datetime.strptime(value, _HISTORY_DATE_FMT).date()
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid date format. Expected dd-MM-yyyy")
+
+
+def _resolve_date_range(date_: str | None, from_date: str | None, to_date: str | None) -> tuple[date, date]:
+    today = shape.today_ist()
+    if date_:
+        d = _parse_history_date(date_)
+        from_d, to_d = d, d
+    else:
+        from_d = _parse_history_date(from_date) if from_date else today
+        to_d = _parse_history_date(to_date) if to_date else today
+
+    if from_d > today or to_d > today:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Future dates are not allowed")
+    if from_d < _EARLIEST_HISTORY_DATE or to_d < _EARLIEST_HISTORY_DATE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Date cannot be prior to 2020")
+    if from_d > to_d:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="From date cannot be after To date")
+    return from_d, to_d
+
+
+def _history_query(db: Session, current_user: User, status_filter: str | None, start, end, market_type: str | None):
+    query = db.query(SimulationEntry).filter(
+        SimulationEntry.user_id == current_user.id,
+        SimulationEntry.created_at >= start,
+        SimulationEntry.created_at < end,
+    )
+    if status_filter:
+        query = query.filter(SimulationEntry.status == status_filter)
+
+    wanted = (market_type or "REGULAR").strip().upper().replace("GALI_DESAWAR", "GALI_DISAWAR")
+    if wanted not in ("ALL", ""):
+        query = query.join(Market, Market.id == SimulationEntry.market_id).join(MarketCategory, MarketCategory.id == Market.category_id)
+        if wanted == "REGULAR":
+            query = query.filter(MarketCategory.slug.notin_(_SPECIAL_MARKET_TYPES))
+        else:
+            query = query.filter(MarketCategory.slug == wanted)
+    return query
+
+
+def _history_page(
+    db: Session, current_user: User, page: int, limit: int, status_filter: str | None,
+    start, end, market_type: str | None,
+) -> tuple[list[dict], int]:
+    query = _history_query(db, current_user, status_filter, start, end, market_type)
+    total = query.count()
+    offset = max(0, (page - 1) * limit)
+    entries = query.order_by(SimulationEntry.id.desc()).limit(limit).offset(offset).all()
+    game_types = {g.id: g.code for g in db.query(GameType).all()}
+    markets = {m.id: m.name for m in db.query(Market).all()}
+    items = [_entry_out(e, game_types.get(e.game_type_id, ""), markets.get(e.market_id, "")) for e in entries]
+    return items, total
+
+
+def _total_pages(total: int, limit: int) -> int:
+    return max(1, -(-total // limit))
+
+
+@router.get("/history/bids")
+def history_bids(
+    market_type: str | None = Query(None, alias="market_type"),
+    date: str | None = Query(None, description="DD-MM-YYYY"),
+    from_date: str | None = Query(None, alias="from_date"),
+    to_date: str | None = Query(None, alias="to_date"),
+    fromDate: str | None = Query(None),
+    toDate: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bid History shows only bets still awaiting a result -- once a bet is settled
+    (won or lost), it drops off this list. Winners then show up in /history/wins."""
+    from_d, to_d = _resolve_date_range(date, from_date or fromDate, to_date or toDate)
+    start, end = shape.ist_day_bounds(from_d)[0], shape.ist_day_bounds(to_d)[1]
+    items, total = _history_page(db, current_user, page, limit, "Pending", start, end, market_type)
+    return _ok({"totalBids": total, "page": page, "totalPages": _total_pages(total, limit), "bids": items})
+
+
+@router.get("/history/wins")
+def history_wins(
+    market_type: str | None = Query(None, alias="market_type"),
+    date: str | None = Query(None, description="DD-MM-YYYY"),
+    from_date: str | None = Query(None, alias="from_date"),
+    to_date: str | None = Query(None, alias="to_date"),
+    fromDate: str | None = Query(None),
+    toDate: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from_d, to_d = _resolve_date_range(date, from_date or fromDate, to_date or toDate)
+    start, end = shape.ist_day_bounds(from_d)[0], shape.ist_day_bounds(to_d)[1]
+    items, total = _history_page(db, current_user, page, limit, "Won", start, end, market_type)
+    total_won_amount = (
+        _history_query(db, current_user, "Won", start, end, market_type)
+        .with_entities(func.coalesce(func.sum(SimulationEntry.simulated_return), 0))
+        .scalar()
+    )
+    return _ok({
+        "totalWins": total,
+        "totalWonAmount": float(total_won_amount or 0),
+        "page": page,
+        "totalPages": _total_pages(total, limit),
+        "wins": items,
+    })
+
 
 
 
