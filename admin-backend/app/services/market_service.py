@@ -51,21 +51,34 @@ def effective_market_status(market: Market) -> str:
     until someone manually clicks the status button. This derives the status
     actually in effect right now, without touching the stored column, so both
     bet validation and the app's displayed session status auto-advance on
-    schedule. Admin-driven states (SUSPENDED, CLOSED, RESULT_*) are untouched --
-    only the UPCOMING->OPEN and OPEN->CLOSED clock-driven edges are covered."""
-    if market.status not in ("UPCOMING", "OPEN"):
-        return market.status
+    schedule. SUSPENDED is always an explicit admin override and is never
+    touched here.
+
+    CLOSED / RESULT_PENDING / RESULT_PUBLISHED are only meaningful for the day
+    they were set on -- each market runs one open/close/result cycle per day.
+    If we're still sitting in one of those from yesterday (i.e. it's now before
+    today's opening_time), treat it as a fresh UPCOMING for the new day instead
+    of leaving yesterday's result/closed state on screen indefinitely."""
+    if market.status == "SUSPENDED":
+        return "SUSPENDED"
 
     now = datetime.now(ZoneInfo(market.timezone or "Asia/Kolkata")).time()
 
-    if market.status == "UPCOMING":
+    status_for_today = market.status
+    if status_for_today in ("CLOSED", "RESULT_PENDING", "RESULT_PUBLISHED"):
+        if market.opening_time is None or now < market.opening_time:
+            status_for_today = "UPCOMING"
+        else:
+            return status_for_today  # still within/after today's window -- admin-driven, leave as-is
+
+    if status_for_today == "UPCOMING":
         if market.opening_time and now >= market.opening_time:
             deadline = market.closing_time or market.cutoff_time
             if deadline is None or now < deadline:
                 return "OPEN"
         return "UPCOMING"
 
-    # status == "OPEN"
+    # status_for_today == "OPEN"
     if market.closing_time and now >= market.closing_time:
         return "CLOSED"
     return "OPEN"
