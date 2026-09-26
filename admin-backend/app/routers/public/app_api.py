@@ -698,7 +698,7 @@ def gali_desawar_bets(payload: GaliDesawarBetRequest, current_user: User = Depen
 
 # --- History (own simulation entries) ---------------------------------------
 
-def _entry_out(entry: SimulationEntry, game_type_code: str) -> dict:
+def _entry_out(entry: SimulationEntry, game_type_code: str, mask_status: bool = False) -> dict:
     return {
         "id": str(entry.id),
         "batchId": str(entry.batch_id),
@@ -710,13 +710,16 @@ def _entry_out(entry: SimulationEntry, game_type_code: str) -> dict:
         "simulatedCredits": entry.simulated_credits,
         "simulatedRate": entry.simulated_rate,
         "simulatedReturn": entry.simulated_return,
-        "status": STATUS_TO_APP.get(entry.status, entry.status.upper()),
+        "status": "SUCCESS" if mask_status else STATUS_TO_APP.get(entry.status, entry.status.upper()),
         "createdAt": shape.iso_ist(entry.created_at),
         "resolvedAt": shape.iso_ist(entry.resolved_at),
     }
 
 
-def _history(db: Session, current_user: User, limit: int, offset: int, status_filter: str | None, on_date: date | None, market_type: str | None) -> list[dict]:
+
+def _history(db: Session, current_user: User, limit: int, offset: int, status_filter: str | None,
+    on_date: date | None, market_type: str | None, mask_status: bool = False,
+) -> list[dict]:
     query = db.query(SimulationEntry).filter(SimulationEntry.user_id == current_user.id)
     if status_filter:
         query = query.filter(SimulationEntry.status == status_filter)
@@ -735,7 +738,7 @@ def _history(db: Session, current_user: User, limit: int, offset: int, status_fi
 
     entries = query.order_by(SimulationEntry.id.desc()).limit(limit).offset(offset).all()
     game_types = {g.id: g.code for g in db.query(GameType).all()}
-    return [_entry_out(e, game_types.get(e.game_type_id, "")) for e in entries]
+    return [_entry_out(e, game_types.get(e.game_type_id, ""), mask_status=mask_status) for e in entries]
 
 
 @router.get("/history/bids")
@@ -754,10 +757,8 @@ def history_bids(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="date must be in DD-MM-YYYY format")
     limit = 20
     offset = max(0, (page - 1) * limit)
-    return _ok({"bids": _history(db, current_user, limit, offset, None, parsed_date, market_type)})
+    return _ok({"bids": _history(db, current_user, limit, offset, None, parsed_date, market_type, mask_status=True)})
 
-
-@router.get("/history/wins")
 def history_wins(
     market_type: str | None = Query(None, alias="market_type"),
     page: int = 1,
