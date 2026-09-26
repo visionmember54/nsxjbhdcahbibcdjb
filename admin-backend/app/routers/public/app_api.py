@@ -836,61 +836,6 @@ def history_wins(
     })
 
 
-
-
-def _history(db: Session, current_user: User, limit: int, offset: int, status_filter: str | None,
-    on_date: date | None, market_type: str | None, mask_status: bool = False,
-) -> list[dict]:
-    query = db.query(SimulationEntry).filter(SimulationEntry.user_id == current_user.id)
-    if status_filter:
-        query = query.filter(SimulationEntry.status == status_filter)
-    if on_date:
-        start, end = shape.ist_day_bounds(on_date)  # the app's date is an IST day; created_at is stored in UTC
-        query = query.filter(SimulationEntry.created_at >= start, SimulationEntry.created_at < end)
-
-    # No filter (or ALL) shows every bid so a just-placed bet always appears; unknown values behave the same.
-    wanted = (market_type or "ALL").strip().upper().replace("GALI_DESAWAR", "GALI_DISAWAR")
-    if wanted not in ("ALL", ""):
-        query = query.join(Market, Market.id == SimulationEntry.market_id).join(MarketCategory, MarketCategory.id == Market.category_id)
-        if wanted == "REGULAR":
-            query = query.filter(MarketCategory.slug.notin_(_SPECIAL_MARKET_TYPES))
-        else:
-            query = query.filter(MarketCategory.slug == wanted)
-
-    entries = query.order_by(SimulationEntry.id.desc()).limit(limit).offset(offset).all()
-    game_types = {g.id: g.code for g in db.query(GameType).all()}
-    return [_entry_out(e, game_types.get(e.game_type_id, ""), mask_status=mask_status) for e in entries]
-
-
-@router.get("/history/bids")
-def history_bids(
-    market_type: str | None = Query(None, alias="market_type"),
-    date: str | None = Query(None, description="DD-MM-YYYY"),
-    page: int = 1,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    parsed_date = None
-    if date:
-        try:
-            parsed_date = datetime.strptime(date, "%d-%m-%Y").date()
-        except ValueError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="date must be in DD-MM-YYYY format")
-    limit = 20
-    offset = max(0, (page - 1) * limit)
-    return _ok({"bids": _history(db, current_user, limit, offset, None, parsed_date, market_type, mask_status=True)})
-
-def history_wins(
-    market_type: str | None = Query(None, alias="market_type"),
-    page: int = 1,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    limit = 20
-    offset = max(0, (page - 1) * limit)
-    return _ok({"wins": _history(db, current_user, limit, offset, "Won", None, market_type)})
-
-
 # --- Wallet (read-only virtual Learning Credits -- no deposit/withdrawal) ---
 import urllib.parse
 
