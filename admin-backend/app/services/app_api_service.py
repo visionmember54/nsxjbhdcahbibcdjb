@@ -11,6 +11,7 @@ from datetime import date, datetime, time as time_, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
+from app.services.market_service import effective_market_status
 
 from app.models.game_type import GameType
 from app.models.market import Market, StarlineSlot
@@ -127,10 +128,14 @@ def latest_published_result(db: Session, market_id: int, slot_id: int | None = N
 
 def market_session_status(market: Market) -> tuple[str, bool, bool, bool]:
     """-> (sessionStatus, isOpeningLive, isClosingLive, isBiddingAllowed)."""
-    if market.status == "UPCOMING":
+    status = effective_market_status(market)
+    if status == "UPCOMING":
         return "UPCOMING", False, False, False
-    if market.status != "OPEN":
+    if status != "OPEN":
         return "CLOSED_TODAY", False, False, False
+
+    now = datetime.now(ZoneInfo(market.timezone or "Asia/Kolkata")).time()
+
 
     now = datetime.now(ZoneInfo(market.timezone or "Asia/Kolkata")).time()
     cutoff = market.cutoff_time or market.closing_time

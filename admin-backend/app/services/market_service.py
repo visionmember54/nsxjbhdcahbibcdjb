@@ -44,8 +44,35 @@ def _cutoff_passed(cutoff: time_ | None, timezone_name: str) -> bool:
     return datetime.now(ZoneInfo(timezone_name)).time() >= cutoff
 
 
+def effective_market_status(market: Market) -> str:
+    """market.status is admin-set and never advances on its own -- a market left
+    at UPCOMING past its scheduled opening_time would otherwise block bets
+    forever (and one left at OPEN past closing_time would accept them forever)
+    until someone manually clicks the status button. This derives the status
+    actually in effect right now, without touching the stored column, so both
+    bet validation and the app's displayed session status auto-advance on
+    schedule. Admin-driven states (SUSPENDED, CLOSED, RESULT_*) are untouched --
+    only the UPCOMING->OPEN and OPEN->CLOSED clock-driven edges are covered."""
+    if market.status not in ("UPCOMING", "OPEN"):
+        return market.status
+
+    now = datetime.now(ZoneInfo(market.timezone or "Asia/Kolkata")).time()
+
+    if market.status == "UPCOMING":
+        if market.opening_time and now >= market.opening_time:
+            deadline = market.closing_time or market.cutoff_time
+            if deadline is None or now < deadline:
+                return "OPEN"
+        return "UPCOMING"
+
+    # status == "OPEN"
+    if market.closing_time and now >= market.closing_time:
+        return "CLOSED"
+    return "OPEN"
+
+
 def assert_market_open(market: Market, stage: str | None = None) -> None:
-    if market.status != "OPEN":
+    if effective_market_status(market) != "OPEN":
         raise AppError(MARKET_CLOSED, f"Market '{market.name}' is not open")
     # Open-session bets (and jodi/sangam, which need the open result) stop at the cutoff; close-session
     # bets stay open until the market closes. This matches the app's OPENING -> CLOSING session states.
