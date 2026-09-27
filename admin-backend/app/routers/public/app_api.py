@@ -803,7 +803,10 @@ def history_bids(
     from_d, to_d = _resolve_date_range(date, from_date or fromDate, to_date or toDate)
     start, end = shape.ist_day_bounds(from_d)[0], shape.ist_day_bounds(to_d)[1]
     items, total = _history_page(db, current_user, page, limit, "Pending", start, end, market_type)
-    return _ok({"totalBids": total, "page": page, "totalPages": _total_pages(total, limit), "bids": items})
+    return _ok(
+        {"totalBids": total, "page": page, "totalPages": _total_pages(total, limit), "bids": items},
+        message="Bid history retrieved successfully",
+    )
 
 
 @router.get("/history/wins")
@@ -827,13 +830,17 @@ def history_wins(
         .with_entities(func.coalesce(func.sum(SimulationEntry.simulated_return), 0))
         .scalar()
     )
-    return _ok({
-        "totalWins": total,
-        "totalWonAmount": float(total_won_amount or 0),
-        "page": page,
-        "totalPages": _total_pages(total, limit),
-        "wins": items,
-    })
+    return _ok(
+        {
+            "totalWins": total,
+            "totalWonAmount": float(total_won_amount or 0),
+            "page": page,
+            "totalPages": _total_pages(total, limit),
+            "wins": items,
+        },
+        message="Win history retrieved successfully",
+    )
+
 
 
 # --- Wallet (read-only virtual Learning Credits -- no deposit/withdrawal) ---
