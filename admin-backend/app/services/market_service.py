@@ -88,7 +88,7 @@ def assert_market_open(market: Market, stage: str | None = None) -> None:
     if effective_market_status(market) != "OPEN":
         raise AppError(MARKET_CLOSED, f"Market '{market.name}' is not open")
     # Open-session bets (and jodi/sangam, which need the open result) stop at the cutoff; close-session
-    # bets stay open until the market closes. This matches the app's OPENING -> CLOSING session states.
+    # bets stay open until the market closes.
     deadline = market.closing_time if stage == "CLOSE" and market.closing_time else (market.cutoff_time or market.closing_time)
     if _cutoff_passed(deadline, market.timezone):
         raise AppError(CUTOFF_PASSED, f"Market '{market.name}' cutoff has passed")
