@@ -21,6 +21,30 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
 
 ALL_STATUSES = {"UPCOMING", "OPEN", "CLOSED", "RESULT_PENDING", "RESULT_PUBLISHED", "SUSPENDED"}
 
+_WEEKDAY_CODES = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+
+def active_days_to_list(value: str | None) -> list[str] | None:
+    """DB storage (comma-separated "SAT,SUN") -> API shape (["SAT", "SUN"]), or None for every day."""
+    if not value:
+        return None
+    days = [d.strip().upper() for d in value.split(",") if d.strip()]
+    return days or None
+
+
+def active_days_to_str(value: list[str] | None) -> str | None:
+    """API shape -> DB storage. Empty list is treated the same as None (every day)."""
+    if not value:
+        return None
+    return ",".join(d.strip().upper() for d in value)
+
+
+def _runs_today(market: Market, now_date) -> bool:
+    if not market.active_days:
+        return True
+    scheduled = {d.strip().upper() for d in market.active_days.split(",") if d.strip()}
+    return _WEEKDAY_CODES[now_date.weekday()] in scheduled
+
 
 def transition_status(db: Session, market: Market, new_status: str) -> Market:
     if new_status not in ALL_STATUSES:
@@ -58,11 +82,19 @@ def effective_market_status(market: Market) -> str:
     they were set on -- each market runs one open/close/result cycle per day.
     If we're still sitting in one of those from yesterday (i.e. it's now before
     today's opening_time), treat it as a fresh UPCOMING for the new day instead
-    of leaving yesterday's result/closed state on screen indefinitely."""
+    of leaving yesterday's result/closed state on screen indefinitely.
+
+    active_days restricts which weekdays a market runs on at all (e.g. a
+    weekend-only CUSTOM market) -- on a day it's not scheduled, it's simply
+    CLOSED for that day, no matter what the stored status says."""
     if market.status == "SUSPENDED":
         return "SUSPENDED"
 
-    now = datetime.now(ZoneInfo(market.timezone or "Asia/Kolkata")).time()
+    now_dt = datetime.now(ZoneInfo(market.timezone or "Asia/Kolkata"))
+    now = now_dt.time()
+
+    if not _runs_today(market, now_dt.date()):
+        return "CLOSED"
 
     status_for_today = market.status
     if status_for_today in ("CLOSED", "RESULT_PENDING", "RESULT_PUBLISHED"):

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useMarkets } from '@/hooks/useMarkets';
 import { Card } from '@/components/ui/Card';
 import { Table, TBody, Td, Th, THead, Tr } from '@/components/ui/Table';
-import { StatusBadge } from '@/components/ui/Badge';
+import Badge, { StatusBadge } from '@/components/ui/Badge';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States';
 import Pagination from '@/components/ui/Pagination';
 import Button from '@/components/ui/Button';
@@ -41,6 +41,7 @@ export default function MarketsListView({ category, title }: { category?: string
               <Th>Opening</Th>
               <Th>Closing</Th>
               <Th>Result</Th>
+              <Th>Visible</Th>
               <Th></Th>
             </Tr>
           </THead>
@@ -55,6 +56,7 @@ export default function MarketsListView({ category, title }: { category?: string
                 <Td>{market.opening_time ?? '—'}</Td>
                 <Td>{market.closing_time ?? '—'}</Td>
                 <Td>{market.result_time ?? '—'}</Td>
+                <Td>{market.visible ? <Badge tone="green">Visible</Badge> : <Badge tone="slate">Hidden</Badge>}</Td>
                 <Td>
                   <Link href={`/dashboard/markets/${market.id}`} className="text-xs font-semibold text-brand-600 hover:underline">
                     Manage →

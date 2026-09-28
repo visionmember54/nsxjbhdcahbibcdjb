@@ -7,6 +7,7 @@ from app.core.deps import get_db
 from app.models.market import Market, MarketCategory, StarlineSlot
 from app.schemas.market import MarketOut
 from app.schemas.starline import StarlineSlotOut
+from app.services import market_service
 
 router = APIRouter(prefix="/starline", tags=["public-starline"])
 
@@ -16,7 +17,7 @@ async def list_starline_markets(db: Session = Depends(get_db)):
     rows = (
         db.query(Market, MarketCategory.slug)
         .join(MarketCategory, MarketCategory.id == Market.category_id)
-        .filter(MarketCategory.slug == "STARLINE")
+        .filter(MarketCategory.slug == "STARLINE", Market.visible.is_(True))
         .order_by(Market.display_order)
         .all()
     )
@@ -24,7 +25,8 @@ async def list_starline_markets(db: Session = Depends(get_db)):
         MarketOut(
             id=m.id, category_id=m.category_id, category=slug, name=m.name, slug=m.slug, description=m.description,
             status=m.status, timezone=m.timezone, opening_time=m.opening_time, closing_time=m.closing_time,
-            cutoff_time=m.cutoff_time, result_time=m.result_time, display_order=m.display_order,
+            cutoff_time=m.cutoff_time, result_time=m.result_time, display_order=m.display_order, visible=m.visible,
+            active_days=market_service.active_days_to_list(m.active_days),
         )
         for m, slug in rows
     ]

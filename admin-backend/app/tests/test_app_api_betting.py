@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, time
 
 import pytest
@@ -77,9 +78,10 @@ def test_starline_bet_by_slot_id_and_variant_time_formats(client, user_headers):
 
 def test_starline_bet_is_stored_on_the_slot_and_shows_in_history(client, user_headers):
     _bet(client, user_headers, marketName="KALYAN STARLINE 12:00 PM", betType="SINGLE DIGIT", session="OPEN", items=[{"number": "1", "points": 50}])
-    assert len(_bids(client, user_headers)) == 1  # no market_type = every bid
+    assert _bids(client, user_headers) == []  # no market_type defaults to REGULAR, which excludes Starline
     assert len(_bids(client, user_headers, market_type="STARLINE")) == 1
     assert _bids(client, user_headers, market_type="REGULAR") == []
+    assert len(_bids(client, user_headers, market_type="ALL")) == 1
 
 
 def test_starline_market_without_slot_is_a_clear_400(client, user_headers):
@@ -173,10 +175,18 @@ def test_statement_date_filter_is_an_ist_day(client, auth_headers, user_headers)
     assert rows(from_date="2026-09-22")[0]["timestamp"] == "2026-09-22T01:11:00+05:30"
 
 
-def test_app_timestamps_carry_the_ist_offset(client, auth_headers, user_headers):
+def test_bid_history_timestamps_are_formatted_ist(client, auth_headers, user_headers):
+    """Bid/Win History renders createdAt/resolvedAt as "dd-MM-yyyy hh:mm a" in IST,
+    not a raw ISO timestamp -- see app_api_service.format_ist."""
     mid = _matka_id(client, auth_headers)
     _bet(client, user_headers, marketId=str(mid), betType="SINGLE DIGIT", session="OPEN", items=[{"number": "5", "points": 10}])
-    assert _bids(client, user_headers)[0]["createdAt"].endswith("+05:30")
+    bid = _bids(client, user_headers)[0]
+    assert re.fullmatch(r"\d{2}-\d{2}-\d{4} \d{2}:\d{2} (AM|PM)", bid["createdAt"])
+    assert bid["resolvedAt"] is None
+    assert bid["marketName"]
+
+
+def test_app_timestamps_carry_the_ist_offset(client, auth_headers, user_headers):
     client.post("/api/v1/wallet/deposit/initiate", headers=user_headers, json={"amount": 500})
     assert client.get("/api/v1/wallet/credit-requests", headers=user_headers).json()["data"]["requests"][0]["createdAt"].endswith("+05:30")
 

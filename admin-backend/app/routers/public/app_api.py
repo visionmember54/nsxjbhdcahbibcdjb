@@ -253,7 +253,11 @@ def home_dashboard(
     every category except Starline / Gali-Disawar), ALL, or a single category slug."""
     categories, type_clause = _market_type_clause(db, marketType)
 
-    query = db.query(Market, MarketCategory.slug).join(MarketCategory, MarketCategory.id == Market.category_id)
+    query = (
+        db.query(Market, MarketCategory.slug)
+        .join(MarketCategory, MarketCategory.id == Market.category_id)
+        .filter(Market.visible.is_(True))
+    )
     if type_clause is not None:
         query = query.filter(type_clause)
     rows = query.order_by(Market.display_order, Market.id).all()
@@ -373,7 +377,7 @@ def config_game_rates(db: Session = Depends(get_db)):
 
 @router.get("/markets/live-results")
 def markets_live_results(db: Session = Depends(get_db)):
-    markets = db.query(Market).order_by(Market.display_order, Market.id).all()
+    markets = db.query(Market).filter(Market.visible.is_(True)).order_by(Market.display_order, Market.id).all()
     out = []
     for market in markets:
         result = shape.latest_published_result(db, market.id)
@@ -554,7 +558,10 @@ def bets_place_full_sangam(payload: FullSangamBetRequest, current_user: User = D
 @router.get("/starline/slots")
 def starline_slots(db: Session = Depends(get_db)):
     markets = (
-        db.query(Market).join(MarketCategory, MarketCategory.id == Market.category_id).filter(MarketCategory.slug == "STARLINE").all()
+        db.query(Market)
+        .join(MarketCategory, MarketCategory.id == Market.category_id)
+        .filter(MarketCategory.slug == "STARLINE", Market.visible.is_(True))
+        .all()
     )
     out = []
     for market in markets:
@@ -591,7 +598,10 @@ def starline_slots(db: Session = Depends(get_db)):
 @router.get("/starline/charts")
 def starline_charts(days: int = Query(15, ge=1, le=90), db: Session = Depends(get_db)):
     markets = (
-        db.query(Market).join(MarketCategory, MarketCategory.id == Market.category_id).filter(MarketCategory.slug == "STARLINE").all()
+        db.query(Market)
+        .join(MarketCategory, MarketCategory.id == Market.category_id)
+        .filter(MarketCategory.slug == "STARLINE", Market.visible.is_(True))
+        .all()
     )
     market_ids = [m.id for m in markets]
     slots = db.query(StarlineSlot).filter(StarlineSlot.market_id.in_(market_ids)).order_by(StarlineSlot.display_order).all()
@@ -623,7 +633,7 @@ def gali_desawar_markets(db: Session = Depends(get_db)):
     markets = (
         db.query(Market)
         .join(MarketCategory, MarketCategory.id == Market.category_id)
-        .filter(MarketCategory.slug == "GALI_DISAWAR")
+        .filter(MarketCategory.slug == "GALI_DISAWAR", Market.visible.is_(True))
         .order_by(Market.display_order)
         .all()
     )

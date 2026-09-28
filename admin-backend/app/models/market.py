@@ -39,6 +39,11 @@ class Market(Base):
     cutoff_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     result_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
+    visible: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    # Comma-separated 3-letter weekday codes (MON..SUN), e.g. "SAT,SUN" -- null/empty means every day.
+    # Lets a market (typically CUSTOM, e.g. a weekend-only special) run on a subset of weekdays
+    # without an admin having to manually suspend/resume it each day.
+    active_days: Mapped[str | None] = mapped_column(String(30), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)

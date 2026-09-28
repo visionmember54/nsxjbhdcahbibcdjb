@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_db
 from app.models.market import Market, MarketCategory
 from app.schemas.market import MarketOut
+from app.services import market_service
 
 router = APIRouter(prefix="/gali-disawar", tags=["public-gali-disawar"])
 
@@ -15,7 +16,8 @@ def _market_out(market: Market, category_slug: str) -> MarketOut:
         id=market.id, category_id=market.category_id, category=category_slug, name=market.name, slug=market.slug,
         description=market.description, status=market.status, timezone=market.timezone,
         opening_time=market.opening_time, closing_time=market.closing_time, cutoff_time=market.cutoff_time,
-        result_time=market.result_time, display_order=market.display_order,
+        result_time=market.result_time, display_order=market.display_order, visible=market.visible,
+        active_days=market_service.active_days_to_list(market.active_days),
     )
 
 
@@ -24,7 +26,7 @@ async def list_gali_disawar_markets(db: Session = Depends(get_db)):
     rows = (
         db.query(Market, MarketCategory.slug)
         .join(MarketCategory, MarketCategory.id == Market.category_id)
-        .filter(MarketCategory.slug == "GALI_DISAWAR")
+        .filter(MarketCategory.slug == "GALI_DISAWAR", Market.visible.is_(True))
         .order_by(Market.display_order)
         .all()
     )

@@ -49,6 +49,8 @@ async def list_simulations(
     pagination: PageParams = Depends(),
     user_id: int | None = None,
     market_id: int | None = None,
+    game_type: str | None = None,
+    status_filter: str | None = None,
     current_admin: Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
@@ -57,6 +59,10 @@ async def list_simulations(
         query = query.filter(SimulationEntry.user_id == user_id)
     if market_id is not None:
         query = query.filter(SimulationEntry.market_id == market_id)
+    if game_type:
+        query = query.filter(GameType.code == game_type.strip().upper())
+    if status_filter:
+        query = query.filter(SimulationEntry.status == status_filter.strip().capitalize())
     total = query.count()
     rows = query.order_by(SimulationEntry.id.desc()).limit(pagination.limit).offset(pagination.offset).all()
     items = [_entry_out(e, code) for e, code in rows]

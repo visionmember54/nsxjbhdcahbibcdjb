@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from datetime import time as time_type
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+WEEKDAY_CODES = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"}
+
+
+def _validate_active_days(value: list[str] | None) -> list[str] | None:
+    if value is None:
+        return None
+    codes = [v.strip().upper() for v in value]
+    unknown = [c for c in codes if c not in WEEKDAY_CODES]
+    if unknown:
+        raise ValueError(f"Unknown weekday code(s): {', '.join(unknown)}. Use MON..SUN.")
+    return codes or None
 
 
 class MarketCategoryCreate(BaseModel):
@@ -31,6 +43,10 @@ class MarketCreate(BaseModel):
     cutoff_time: time_type | None = None
     result_time: time_type | None = None
     display_order: int = 0
+    visible: bool = True
+    active_days: list[str] | None = Field(default=None, description="Subset of MON..SUN this market runs on; omit for every day")
+
+    _validate_active_days = field_validator("active_days")(_validate_active_days)
 
 
 class MarketUpdate(BaseModel):
@@ -41,6 +57,10 @@ class MarketUpdate(BaseModel):
     cutoff_time: time_type | None = None
     result_time: time_type | None = None
     display_order: int | None = None
+    visible: bool | None = None
+    active_days: list[str] | None = None
+
+    _validate_active_days = field_validator("active_days")(_validate_active_days)
 
 
 class MarketStatusUpdate(BaseModel):
@@ -61,5 +81,7 @@ class MarketOut(BaseModel):
     cutoff_time: time_type | None
     result_time: time_type | None
     display_order: int
+    visible: bool
+    active_days: list[str] | None
 
     model_config = {"from_attributes": True}

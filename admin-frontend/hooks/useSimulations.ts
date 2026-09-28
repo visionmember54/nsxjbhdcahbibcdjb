@@ -11,14 +11,18 @@ function invalidateAfterOverride(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['dashboard'] });
 }
 
-export function useSimulations(params: { studentId?: number; marketId?: number; limit?: number; offset?: number } = {}) {
-  const { studentId, marketId, limit = 20, offset = 0 } = params;
+export function useSimulations(
+  params: { studentId?: number; marketId?: number; gameType?: string; status?: string; limit?: number; offset?: number } = {}
+) {
+  const { studentId, marketId, gameType, status, limit = 20, offset = 0 } = params;
   const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (studentId != null) qs.set('user_id', String(studentId));
   if (marketId != null) qs.set('market_id', String(marketId));
+  if (gameType) qs.set('game_type', gameType);
+  if (status) qs.set('status_filter', status);
 
   return useQuery({
-    queryKey: ['simulations', studentId ?? null, marketId ?? null, limit, offset],
+    queryKey: ['simulations', studentId ?? null, marketId ?? null, gameType ?? null, status ?? null, limit, offset],
     queryFn: () => api.get<Page<SimulationEntry>>(`/admin/simulations?${qs.toString()}`),
   });
 }

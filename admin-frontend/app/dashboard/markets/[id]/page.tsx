@@ -1,15 +1,17 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useMarket, useUpdateMarketStatus } from '@/hooks/useMarkets';
 import PageHeader from '@/components/layout/PageHeader';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
-import { StatusBadge } from '@/components/ui/Badge';
+import Badge, { StatusBadge } from '@/components/ui/Badge';
 import { LoadingState, ErrorState } from '@/components/ui/States';
 import Button from '@/components/ui/Button';
 import GameTypeConfigsPanel from '@/components/markets/GameTypeConfigsPanel';
 import RatesPanel from '@/components/markets/RatesPanel';
 import StarlineSlotsPanel from '@/components/markets/StarlineSlotsPanel';
+import EditMarketModal from '@/components/markets/EditMarketModal';
 
 const NEXT_STATUSES: Record<string, string[]> = {
   UPCOMING: ['OPEN', 'SUSPENDED'],
@@ -25,6 +27,7 @@ export default function MarketDetailPage() {
   const marketId = Number(params.id);
   const { data: market, isLoading, isError, error } = useMarket(marketId);
   const updateStatus = useUpdateMarketStatus();
+  const [editOpen, setEditOpen] = useState(false);
 
   if (isLoading) return <LoadingState />;
   if (isError) return <ErrorState message={(error as Error).message} />;
@@ -35,12 +38,20 @@ export default function MarketDetailPage() {
 
   return (
     <div>
-      <PageHeader icon="market" title={market.name} description={`${market.category} market`} />
+      <PageHeader
+        icon="market"
+        title={market.name}
+        description={`${market.category} market`}
+        action={<Button onClick={() => setEditOpen(true)}>Edit market</Button>}
+      />
 
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Market status</CardTitle>
-          <StatusBadge status={market.status} />
+          <div className="flex items-center gap-2">
+            {!market.visible && <Badge tone="slate">Hidden from app</Badge>}
+            <StatusBadge status={market.status} />
+          </div>
         </CardHeader>
         <CardBody>
           <div className="mb-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
@@ -63,6 +74,10 @@ export default function MarketDetailPage() {
             <div>
               <p className="text-xs text-slate-500">Timezone</p>
               <p className="font-medium text-slate-800">{market.timezone}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Active days</p>
+              <p className="font-medium text-slate-800">{market.active_days?.length ? market.active_days.join(', ') : 'Every day'}</p>
             </div>
           </div>
 
@@ -108,6 +123,8 @@ export default function MarketDetailPage() {
           </Card>
         </div>
       )}
+
+      <EditMarketModal market={market} open={editOpen} onClose={() => setEditOpen(false)} />
     </div>
   );
 }

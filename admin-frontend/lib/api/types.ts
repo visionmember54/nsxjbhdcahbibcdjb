@@ -127,6 +127,8 @@ export interface Market {
   cutoff_time: string | null;
   result_time: string | null;
   display_order: number;
+  visible: boolean;
+  active_days: string[] | null;
 }
 
 export interface StarlineSlot {

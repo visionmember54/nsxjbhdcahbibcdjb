@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useDashboard } from '@/hooks/useDashboard';
 import PageHeader from '@/components/layout/PageHeader';
 import StatTile from '@/components/ui/StatTile';
@@ -35,7 +36,9 @@ export default function OverviewPage() {
               icon="users"
               tone="blue"
             />
-            <StatTile label="Games Played" value={data.stats.totalSimulations.toLocaleString()} hint={`${data.stats.totalWon} won · ${data.stats.totalLost} lost · ${data.stats.totalPending} pending`} icon="play" tone="purple" />
+            <Link href="/dashboard/simulations/history" className="block">
+              <StatTile label="Games Played" value={data.stats.totalSimulations.toLocaleString()} hint={`${data.stats.totalWon} won · ${data.stats.totalLost} lost · ${data.stats.totalPending} pending`} icon="play" tone="purple" />
+            </Link>
             <StatTile label="Credits In (Staked)" value={data.stats.totalCreditsStaked.toLocaleString()} icon="coin" tone="emerald" />
             <StatTile label="Credits Out (Paid)" value={data.stats.totalCreditsPaidOut.toLocaleString()} icon="coin" tone="red" />
             <StatTile
@@ -48,8 +51,12 @@ export default function OverviewPage() {
           </div>
 
           <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatTile label="Open Markets" value={data.stats.openMarkets} icon="market" tone="emerald" />
-            <StatTile label="Pending Results" value={data.stats.pendingResults} icon="clock" tone="amber" />
+            <Link href="/dashboard/markets" className="block">
+              <StatTile label="Open Markets" value={data.stats.openMarkets} icon="market" tone="emerald" />
+            </Link>
+            <Link href="/dashboard/results/pending" className="block">
+              <StatTile label="Pending Results" value={data.stats.pendingResults} icon="clock" tone="amber" />
+            </Link>
             <StatTile label="Active Starline Slots" value={data.stats.activeStarlineSlots} icon="sliders" tone="slate" />
             <StatTile label="Total Users" value={data.stats.totalUsers} icon="users" tone="slate" />
           </div>
@@ -81,8 +88,12 @@ export default function OverviewPage() {
             <Card className="xl:col-span-2">
               <CardHeader><CardTitle subtitle="Items that may need attention">Today’s Status</CardTitle></CardHeader>
               <CardBody className="grid grid-cols-2 gap-4">
-                <div><p className="text-xs text-slate-500">Pending simulations</p><p className="mt-1 text-lg font-bold text-amber-600">{data.today.pending}</p></div>
-                <div><p className="text-xs text-slate-500">Winning simulations</p><p className="mt-1 text-lg font-bold text-emerald-600">{data.today.won}</p></div>
+                <Link href="/dashboard/simulations/history?status=Pending" className="block">
+                  <p className="text-xs text-slate-500">Pending simulations</p><p className="mt-1 text-lg font-bold text-amber-600">{data.today.pending}</p>
+                </Link>
+                <Link href="/dashboard/simulations/history?status=Won" className="block">
+                  <p className="text-xs text-slate-500">Winning simulations</p><p className="mt-1 text-lg font-bold text-emerald-600">{data.today.won}</p>
+                </Link>
                 <div><p className="text-xs text-slate-500">Results published</p><p className="mt-1 text-lg font-bold text-slate-950">{data.today.publishedResults}</p></div>
                 <div><p className="text-xs text-slate-500">New users</p><p className="mt-1 text-lg font-bold text-slate-950">{data.today.newUsers}</p></div>
               </CardBody>

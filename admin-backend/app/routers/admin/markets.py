@@ -20,7 +20,8 @@ def _market_out(market: Market, category_slug: str) -> MarketOut:
         id=market.id, category_id=market.category_id, category=category_slug, name=market.name, slug=market.slug,
         description=market.description, status=market.status, timezone=market.timezone,
         opening_time=market.opening_time, closing_time=market.closing_time, cutoff_time=market.cutoff_time,
-        result_time=market.result_time, display_order=market.display_order,
+        result_time=market.result_time, display_order=market.display_order, visible=market.visible,
+        active_days=market_service.active_days_to_list(market.active_days),
     )
 
 
@@ -56,7 +57,8 @@ async def create_market(
         category_id=payload.category_id, name=payload.name, slug=payload.slug, description=payload.description,
         status="UPCOMING", timezone=payload.timezone, opening_time=payload.opening_time,
         closing_time=payload.closing_time, cutoff_time=payload.cutoff_time, result_time=payload.result_time,
-        display_order=payload.display_order,
+        display_order=payload.display_order, visible=payload.visible,
+        active_days=market_service.active_days_to_str(payload.active_days),
     )
     db.add(market)
     db.flush()
@@ -76,7 +78,10 @@ async def update_market(
     market = db.get(Market, market_id)
     if not market:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Market not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    if "active_days" in updates:
+        updates["active_days"] = market_service.active_days_to_str(updates["active_days"])
+    for field, value in updates.items():
         setattr(market, field, value)
     db.flush()
     db.add(AuditLog(actor=current_admin.name, action="market_updated", details=f"Market updated: {market.name}", created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))

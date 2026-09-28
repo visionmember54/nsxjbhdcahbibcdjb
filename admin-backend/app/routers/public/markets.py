@@ -10,6 +10,7 @@ from app.schemas.common import Page, PageParams
 from app.schemas.game_type_config import GameTypeConfigOut
 from app.schemas.market import MarketOut
 from app.schemas.rate import RateOut
+from app.services import market_service
 
 router = APIRouter(prefix="/markets", tags=["public-markets"])
 
@@ -19,7 +20,8 @@ def _market_out(market: Market, category_slug: str) -> MarketOut:
         id=market.id, category_id=market.category_id, category=category_slug, name=market.name, slug=market.slug,
         description=market.description, status=market.status, timezone=market.timezone,
         opening_time=market.opening_time, closing_time=market.closing_time, cutoff_time=market.cutoff_time,
-        result_time=market.result_time, display_order=market.display_order,
+        result_time=market.result_time, display_order=market.display_order, visible=market.visible,
+        active_days=market_service.active_days_to_list(market.active_days),
     )
 
 
@@ -29,7 +31,11 @@ async def list_markets(
     category: str | None = None,
     db: Session = Depends(get_db),
 ):
-    query = db.query(Market, MarketCategory.slug).join(MarketCategory, MarketCategory.id == Market.category_id)
+    query = (
+        db.query(Market, MarketCategory.slug)
+        .join(MarketCategory, MarketCategory.id == Market.category_id)
+        .filter(Market.visible.is_(True))
+    )
     if category:
         query = query.filter(MarketCategory.slug == category.upper())
     total = query.count()
@@ -40,6 +46,9 @@ async def list_markets(
 
 @router.get("/{market_id}", response_model=MarketOut)
 async def get_market(market_id: int, db: Session = Depends(get_db)):
+    # No visibility filter here (unlike the list endpoint): this is looked up by an ID the
+    # caller already has -- including the admin panel's own Market Detail page (useMarket()),
+    # which needs to keep working on a hidden market in order to un-hide it again.
     market = db.get(Market, market_id)
     if not market:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Market not found")
