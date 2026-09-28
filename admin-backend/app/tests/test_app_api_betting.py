@@ -191,6 +191,27 @@ def test_app_timestamps_carry_the_ist_offset(client, auth_headers, user_headers)
     assert client.get("/api/v1/wallet/credit-requests", headers=user_headers).json()["data"]["requests"][0]["createdAt"].endswith("+05:30")
 
 
+def test_bid_history_shows_success_not_pending(client, auth_headers, user_headers):
+    """Bid History confirms a bet was placed -- it never reveals Won/Lost, so a
+    still-unresolved bet shows "SUCCESS", not the real "Pending" status."""
+    mid = _matka_id(client, auth_headers)
+    _bet(client, user_headers, marketId=str(mid), betType="SINGLE DIGIT", session="OPEN", items=[{"number": "5", "points": 10}])
+    bid = _bids(client, user_headers)[0]
+    assert bid["status"] == "SUCCESS"
+
+    # Once it resolves, it drops out of Bid History entirely (masking doesn't change that)...
+    db = TestingSessionLocal()
+    entry = db.query(SimulationEntry).order_by(SimulationEntry.id.desc()).first()
+    entry.status = "Won"
+    db.commit()
+    db.close()
+    assert _bids(client, user_headers) == []
+
+    # ...and Win History still shows the real, unmasked "WON" status.
+    wins = client.get("/api/v1/history/wins", headers=user_headers).json()["data"]["wins"]
+    assert wins and wins[0]["status"] == "WON"
+
+
 def test_history_market_type_spellings(client, auth_headers, user_headers):
     _bet(client, user_headers, path="/api/v1/gali-desawar/bets", marketId="DISAWAR", betType="JODI DIGIT", numbers=[{"number": "45", "points": 10}])
     assert len(_bids(client, user_headers, market_type="GALI_DESAWAR")) == 1

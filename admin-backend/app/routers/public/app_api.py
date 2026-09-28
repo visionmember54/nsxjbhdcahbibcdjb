@@ -714,7 +714,7 @@ _HISTORY_DATE_FMT = "%d-%m-%Y"
 _EARLIEST_HISTORY_DATE = date(2020, 1, 1)
 
 
-def _entry_out(entry: SimulationEntry, game_type_code: str, market_name: str) -> dict:
+def _entry_out(entry: SimulationEntry, game_type_code: str, market_name: str, mask_status: bool = False) -> dict:
     return {
         "id": str(entry.id),
         "batchId": str(entry.batch_id),
@@ -727,7 +727,7 @@ def _entry_out(entry: SimulationEntry, game_type_code: str, market_name: str) ->
         "simulatedCredits": entry.simulated_credits,
         "simulatedRate": entry.simulated_rate,
         "simulatedReturn": entry.simulated_return,
-        "status": STATUS_TO_APP.get(entry.status, entry.status.upper()),
+        "status": "SUCCESS" if mask_status else STATUS_TO_APP.get(entry.status, entry.status.upper()),
         "createdAt": shape.format_ist(entry.created_at),
         "resolvedAt": shape.format_ist(entry.resolved_at),
     }
@@ -779,7 +779,7 @@ def _history_query(db: Session, current_user: User, status_filter: str | None, s
 
 def _history_page(
     db: Session, current_user: User, page: int, limit: int, status_filter: str | None,
-    start, end, market_type: str | None,
+    start, end, market_type: str | None, mask_status: bool = False,
 ) -> tuple[list[dict], int]:
     query = _history_query(db, current_user, status_filter, start, end, market_type)
     total = query.count()
@@ -787,7 +787,7 @@ def _history_page(
     entries = query.order_by(SimulationEntry.id.desc()).limit(limit).offset(offset).all()
     game_types = {g.id: g.code for g in db.query(GameType).all()}
     markets = {m.id: m.name for m in db.query(Market).all()}
-    items = [_entry_out(e, game_types.get(e.game_type_id, ""), markets.get(e.market_id, "")) for e in entries]
+    items = [_entry_out(e, game_types.get(e.game_type_id, ""), markets.get(e.market_id, ""), mask_status=mask_status) for e in entries]
     return items, total
 
 
@@ -809,10 +809,12 @@ def history_bids(
     db: Session = Depends(get_db),
 ):
     """Bid History shows only bets still awaiting a result -- once a bet is settled
-    (won or lost), it drops off this list. Winners then show up in /history/wins."""
+    (won or lost), it drops off this list. Winners then show up in /history/wins.
+    Status is shown as "SUCCESS" rather than "PENDING" -- this screen confirms the
+    bet was placed, not its (still unknown) outcome."""
     from_d, to_d = _resolve_date_range(date, from_date or fromDate, to_date or toDate)
     start, end = shape.ist_day_bounds(from_d)[0], shape.ist_day_bounds(to_d)[1]
-    items, total = _history_page(db, current_user, page, limit, "Pending", start, end, market_type)
+    items, total = _history_page(db, current_user, page, limit, "Pending", start, end, market_type, mask_status=True)
     return _ok(
         {"totalBids": total, "page": page, "totalPages": _total_pages(total, limit), "bids": items},
         message="Bid history retrieved successfully",
