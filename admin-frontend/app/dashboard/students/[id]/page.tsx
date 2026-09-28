@@ -1,198 +1,114 @@
 'use client';
 
-import TempPassword from '@/components/ui/TempPassword';
-import { useToast } from '@/components/ui/Feedback';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import PageHeader from '@/components/layout/PageHeader';
-import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
-import { StatusBadge } from '@/components/ui/Badge';
-import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States';
+import { Card } from '@/components/ui/Card';
 import { Table, TBody, Td, Th, THead, Tr } from '@/components/ui/Table';
-import {
-  useStudent,
-  useUserStats,
-  useUserPaymentInfo,
-  useUserWithdrawals,
-  useUserBids,
-  useUserTransactions,
-  useUserWinnings,
-  useResetPassword
-} from '@/hooks/useStudents';
+import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States';
+import { StatusBadge } from '@/components/ui/Badge';
+import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
-import { useState } from 'react';
+import Pagination from '@/components/ui/Pagination';
+import { Input, Select } from '@/components/ui/Field';
+import { useStudents, useUpdateStudent } from '@/hooks/useStudents';
+import CreateStudentModal from '@/components/students/CreateStudentModal';
 
-export default function StudentDetailPage() {
-  const params = useParams<{ id: string }>();
-  const studentId = Number(params.id);
-  const toast = useToast();
-  const student = useStudent(studentId);
-  const stats = useUserStats(studentId);
-  const paymentInfo = useUserPaymentInfo(studentId);
-  const withdrawals = useUserWithdrawals(studentId);
-  const bids = useUserBids(studentId);
-  const transactions = useUserTransactions(studentId);
-  const winnings = useUserWinnings(studentId);
-  const resetPassword = useResetPassword();
+export default function StudentsPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <StudentsPageInner />
+    </Suspense>
+  );
+}
 
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
+function StudentsPageInner() {
+  const searchParams = useSearchParams();
+  const [offset, setOffset] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'disabled' | ''>('');
+  const joinedToday = searchParams.get('joinedToday') === '1';
+  const activeToday = searchParams.get('activeToday') === '1';
+  const limit = 20;
+  const { data, isLoading, isError, error } = useStudents({
+    limit, offset, search, status: statusFilter || undefined, joinedToday, activeToday,
+  });
+  const updateStudent = useUpdateStudent();
 
-  if (student.isLoading) return <LoadingState />;
-  if (student.isError) return <ErrorState message={(student.error as Error).message} />;
-  if (!student.data) return <EmptyState title="User not found" />;
-  const user = student.data;
-
-  const handleResetPassword = () => {
-    resetPassword.mutate(studentId, {
-      onSuccess: (res) => setTempPassword(res.temporary_password),
-    });
-  };
-
-  return <div>
-    <PageHeader icon="users" title={user.name} description="Comprehensive user details view." action={<Link href={`/dashboard/wallet-activity/credits?studentId=${user.id}`} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-glow transition-all hover:from-brand-400 hover:to-brand-500 active:scale-[0.98]">Manage Credits</Link>} />
-
-    <Card className="mb-6">
-      <CardHeader><CardTitle>User Details</CardTitle></CardHeader>
-      <CardBody>
-        <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4 lg:grid-cols-5">
-          <div><p className="text-xs text-slate-500">Name</p><p className="font-semibold">{user.name}</p></div>
-          <div><p className="text-xs text-slate-500">Phone</p><p>{user.phone}</p></div>
-          <div><p className="text-xs text-slate-500">Email</p><p>{user.email || '—'}</p></div>
-          <div><p className="text-xs text-slate-500">Status</p><StatusBadge status={user.status} /></div>
-          <div><p className="text-xs text-slate-500">ID Creation Date</p><p>{new Date(user.created_at).toLocaleDateString()}</p></div>
-          <div><p className="text-xs text-slate-500">Last Seen</p><p>{user.last_seen ? new Date(user.last_seen).toLocaleString() : 'Never'}</p></div>
-          <div>
-            <p className="text-xs text-slate-500">Password</p>
-            <Button variant="secondary" size="sm" onClick={handleResetPassword} disabled={resetPassword.isPending}>
-              {resetPassword.isPending ? 'Resetting...' : 'Reset Password'}
-            </Button>
-            {tempPassword && <div className="mt-2"><TempPassword password={tempPassword} /></div>}
-          </div>
+  return (
+    <div>
+      <PageHeader
+        icon="users"
+        title="Users"
+        description="Manage user accounts, access status, and virtual-credit balances."
+        action={<Button onClick={() => setCreateOpen(true)}>+ New user</Button>}
+      />
+      {(joinedToday || activeToday) && (
+        <div className="mb-4">
+          <Link href="/dashboard/students">
+            <Badge tone="blue">
+              {joinedToday ? 'Signed up today' : 'Active today'} — click to clear filter ✕
+            </Badge>
+          </Link>
         </div>
-      </CardBody>
-    </Card>
+      )}
+      <Card>
+        <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-2">
+          <Input placeholder="Search name, phone, or email" value={search} onChange={(e) => { setSearch(e.target.value); setOffset(0); }} />
+          <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as 'active' | 'disabled' | ''); setOffset(0); }}>
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="disabled">Disabled</option>
+          </Select>
+        </div>
+        {isLoading && <LoadingState />}
+        {isError && <ErrorState message={(error as Error).message} />}
+        {data && data.items.length === 0 && <EmptyState title="No users yet" />}
 
-    <Card className="mb-6">
-      <CardHeader><CardTitle>Wallet Stats</CardTitle></CardHeader>
-      <CardBody>
-        {stats.isLoading ? <LoadingState /> : stats.data ? (
-          <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-5">
-            <div><p className="text-xs text-slate-500">Current Balance</p><p className="font-bold text-lg">{user.balance.toLocaleString()}</p></div>
-            <div><p className="text-xs text-slate-500">Total Add Amount</p><p className="font-semibold text-emerald-600">{stats.data.total_added}</p></div>
-            <div><p className="text-xs text-slate-500">Total Withdrawal Amount</p><p className="font-semibold text-red-600">{stats.data.total_withdrawn}</p></div>
-            <div><p className="text-xs text-slate-500">Overall In (Credits)</p><p className="font-semibold text-emerald-600">{stats.data.overall_in}</p></div>
-            <div><p className="text-xs text-slate-500">Overall Out (Credits)</p><p className="font-semibold text-red-600">{stats.data.overall_out}</p></div>
-          </div>
-        ) : <EmptyState title="No stats available" />}
-      </CardBody>
-    </Card>
-
-    <Card className="mb-6">
-      <CardHeader><CardTitle>Payment Information</CardTitle></CardHeader>
-      <CardBody>
-        {paymentInfo.isLoading ? <LoadingState /> : paymentInfo.data?.length ? (
+        {data && data.items.length > 0 && (
           <Table>
-            <THead><Tr><Th>Method</Th><Th>Account Name</Th><Th>Account / UPI</Th><Th>IFSC</Th></Tr></THead>
+            <THead>
+              <Tr>
+                <Th>Name</Th>
+                <Th>Phone</Th>
+                <Th>Email</Th>
+                <Th>Balance</Th>
+                <Th>Status</Th>
+                <Th></Th>
+              </Tr>
+            </THead>
             <TBody>
-              {paymentInfo.data.map(info => (
-                <Tr key={info.id}>
-                  <Td>{info.payment_method}</Td>
-                  <Td>{info.account_name || '—'}</Td>
-                  <Td>{info.account_number || info.upi_id || '—'}</Td>
-                  <Td>{info.ifsc_code || '—'}</Td>
+              {data.items.map((s) => (
+                <Tr key={s.id}>
+                  <Td className="font-medium text-slate-900"><Link href={`/dashboard/students/${s.id}`} className="hover:text-brand-600 hover:underline">{s.name}</Link></Td>
+                  <Td>{s.phone}</Td>
+                  <Td>{s.email || '—'}</Td>
+                  <Td>{s.balance.toLocaleString()}</Td>
+                  <Td>
+                    <StatusBadge status={s.status} />
+                  </Td>
+                  <Td className="space-x-3">
+                    <Link href={`/dashboard/wallet-activity/credits?studentId=${s.id}`} className="text-xs font-semibold text-brand-600 hover:underline">
+                      Credits
+                    </Link>
+                    <button
+                      className="text-xs font-semibold text-slate-500 hover:underline"
+                      onClick={() => { const reason = window.prompt(`Optional reason for ${s.status === 'active' ? 'disabling' : 'enabling'} this user:`); updateStudent.mutate({ id: s.id, status: s.status === 'active' ? 'disabled' : 'active', reason: reason || undefined }); }}
+                    >
+                      {s.status === 'active' ? 'Disable' : 'Enable'}
+                    </button>
+                  </Td>
                 </Tr>
               ))}
             </TBody>
           </Table>
-        ) : <EmptyState title="No payment information added" />}
-      </CardBody>
-    </Card>
+        )}
+        {data && <Pagination total={data.total} limit={limit} offset={offset} onOffsetChange={setOffset} />}
+      </Card>
 
-    <Card className="mb-6">
-      <CardHeader><CardTitle>Withdrawal History</CardTitle></CardHeader>
-      <CardBody>
-        {withdrawals.isLoading ? <LoadingState /> : withdrawals.data?.length ? (
-          <Table>
-            <THead><Tr><Th>Date</Th><Th>Amount</Th><Th>Status</Th></Tr></THead>
-            <TBody>
-              {withdrawals.data.map(w => (
-                <Tr key={w.id}>
-                  <Td>{new Date(w.created_at).toLocaleString()}</Td>
-                  <Td>{w.requested_amount}</Td>
-                  <Td><StatusBadge status={w.status} /></Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-        ) : <EmptyState title="No withdrawal history" />}
-      </CardBody>
-    </Card>
-
-    <Card className="mb-6">
-      <CardHeader><CardTitle>Bid History (Front Games Only)</CardTitle></CardHeader>
-      <CardBody>
-        {bids.isLoading ? <LoadingState /> : bids.data?.length ? (
-          <Table>
-            <THead><Tr><Th>Date</Th><Th>Game</Th><Th>Type</Th><Th>Session</Th><Th>Selection</Th><Th>Points</Th><Th>Status</Th></Tr></THead>
-            <TBody>
-              {bids.data.map(b => (
-                <Tr key={b.id}>
-                  <Td>{new Date(b.created_at).toLocaleString()}</Td>
-                  <Td>{b.game_name}</Td>
-                  <Td>{b.game_type}</Td>
-                  <Td>{b.session || '—'}</Td>
-                  <Td>{b.selection}</Td>
-                  <Td>{b.points}</Td>
-                  <Td><StatusBadge status={b.status} /></Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-        ) : <EmptyState title="No bid history" />}
-      </CardBody>
-    </Card>
-
-    <Card className="mb-6">
-      <CardHeader><CardTitle>Wallet Transaction History</CardTitle></CardHeader>
-      <CardBody>
-        {transactions.isLoading ? <LoadingState /> : transactions.data?.length ? (
-          <Table>
-            <THead><Tr><Th>Date</Th><Th>Type</Th><Th>Amount</Th><Th>Balance After</Th><Th>Note</Th></Tr></THead>
-            <TBody>
-              {transactions.data.map(t => (
-                <Tr key={t.id}>
-                  <Td>{new Date(t.created_at).toLocaleString()}</Td>
-                  <Td>{t.type}</Td>
-                  <Td className={t.amount >= 0 ? 'text-emerald-600' : 'text-red-600'}>{t.amount}</Td>
-                  <Td>{t.balance_after}</Td>
-                  <Td>{t.note || '—'}</Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-        ) : <EmptyState title="No transactions" />}
-      </CardBody>
-    </Card>
-
-    <Card className="mb-6">
-      <CardHeader><CardTitle>Winning History</CardTitle></CardHeader>
-      <CardBody>
-        {winnings.isLoading ? <LoadingState /> : winnings.data?.length ? (
-          <Table>
-            <THead><Tr><Th>Date</Th><Th>Game</Th><Th>Winning Amount</Th><Th>Action</Th></Tr></THead>
-            <TBody>
-              {winnings.data.map(w => (
-                <Tr key={w.id}>
-                  <Td>{new Date(w.date).toLocaleString()}</Td>
-                  <Td>{w.game_name}</Td>
-                  <Td className="text-emerald-600 font-bold">{w.winning_amount}</Td>
-                  <Td><Button variant="secondary" size="sm" onClick={() => toast(`Won ${w.winning_amount} on ${w.game_name} at ${new Date(w.date).toLocaleString()}`)}>View Details</Button></Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-        ) : <EmptyState title="No winning history" />}
-      </CardBody>
-    </Card>
-  </div>;
+      <CreateStudentModal open={createOpen} onClose={() => setCreateOpen(false)} />
+    </div>
+  );
 }

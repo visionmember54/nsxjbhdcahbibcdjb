@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import PageHeader from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Table, TBody, Td, Th, THead, Tr } from '@/components/ui/Table';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States';
 import { StatusBadge } from '@/components/ui/Badge';
+import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import Pagination from '@/components/ui/Pagination';
 import { Input, Select } from '@/components/ui/Field';
@@ -14,12 +16,25 @@ import { useStudents, useUpdateStudent } from '@/hooks/useStudents';
 import CreateStudentModal from '@/components/students/CreateStudentModal';
 
 export default function StudentsPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <StudentsPageInner />
+    </Suspense>
+  );
+}
+
+function StudentsPageInner() {
+  const searchParams = useSearchParams();
   const [offset, setOffset] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'disabled' | ''>('');
+  const joinedToday = searchParams.get('joinedToday') === '1';
+  const activeToday = searchParams.get('activeToday') === '1';
   const limit = 20;
-  const { data, isLoading, isError, error } = useStudents({ limit, offset, search, status: statusFilter || undefined });
+  const { data, isLoading, isError, error } = useStudents({
+    limit, offset, search, status: statusFilter || undefined, joinedToday, activeToday,
+  });
   const updateStudent = useUpdateStudent();
 
   return (
@@ -30,6 +45,15 @@ export default function StudentsPage() {
         description="Manage user accounts, access status, and virtual-credit balances."
         action={<Button onClick={() => setCreateOpen(true)}>+ New user</Button>}
       />
+      {(joinedToday || activeToday) && (
+        <div className="mb-4">
+          <Link href="/dashboard/students">
+            <Badge tone="blue">
+              {joinedToday ? 'Signed up today' : 'Active today'} — click to clear filter ✕
+            </Badge>
+          </Link>
+        </div>
+      )}
       <Card>
         <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-2">
           <Input placeholder="Search name, phone, or email" value={search} onChange={(e) => { setSearch(e.target.value); setOffset(0); }} />

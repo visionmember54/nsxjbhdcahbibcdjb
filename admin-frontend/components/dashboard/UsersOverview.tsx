@@ -49,7 +49,13 @@ export default function UsersOverview() {
                       <span className="text-slate-400 w-4 inline-block text-center text-xs">
                         {expandedId === s.id ? '▼' : '▶'}
                       </span>
-                      {s.name}
+                      <Link
+                        href={`/dashboard/students/${s.id}`}
+                        className="text-brand-700 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {s.name}
+                      </Link>
                     </Td>
                     <Td>{s.phone}</Td>
                     <Td>{s.email || '—'}</Td>

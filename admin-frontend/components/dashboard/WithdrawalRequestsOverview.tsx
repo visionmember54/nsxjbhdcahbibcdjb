@@ -60,7 +60,9 @@ export default function WithdrawalRequestsOverview() {
               {withdrawals.map((r) => (
                 <Tr key={r.id}>
                   <Td className="font-medium text-slate-900">
-                    {r.userName}
+                    <Link href={`/dashboard/students/${r.userId}`} className="text-brand-700 hover:underline">
+                      {r.userName}
+                    </Link>
                     <span className="block text-xs font-normal text-slate-400">{r.userPhone}</span>
                   </Td>
                   <Td className="font-semibold text-brand-700">

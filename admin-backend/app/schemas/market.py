@@ -83,5 +83,6 @@ class MarketOut(BaseModel):
     display_order: int
     visible: bool
     active_days: list[str] | None
+    effective_status: str
 
     model_config = {"from_attributes": True}

@@ -11,6 +11,7 @@ import { useStudents } from '@/hooks/useStudents';
 import { useCreditHistory } from '@/hooks/useCredits';
 import { useSimulations } from '@/hooks/useSimulations';
 import { useMarketsLookup } from '@/hooks/useMarketsLookup';
+import { ledgerTypeLabel } from '@/lib/ledger';
 
 type Feed =
   | { kind: 'credit'; id: string; at: string; label: string; detail: string }
@@ -31,7 +32,7 @@ export default function StudentActivityPage() {
         kind: 'credit',
         id: `credit-${c.id}`,
         at: c.createdAt,
-        label: c.type,
+        label: ledgerTypeLabel(c.type),
         detail: `${c.amount >= 0 ? '+' : ''}${c.amount} credits (balance ${c.balanceAfter})${c.note ? ` — ${c.note}` : ''}${!c.visibleToUser ? ' (Hidden from user)' : ''}`,
       })
     );
@@ -41,7 +42,7 @@ export default function StudentActivityPage() {
         id: `sim-${s.id}`,
         at: s.createdAt,
         label: `${s.gameType} ${s.selection}`,
-        detail: `${byId.get(s.marketId)?.name ?? `Market #${s.marketId}`} · ${s.simulatedCredits} credits staked`,
+        detail: `${byId.get(s.marketId)?.name ?? `Market #${s.marketId}`} · ${s.simulatedCredits} credits bet`,
         status: s.status,
       })
     );

@@ -11,7 +11,7 @@ export default function GameStatisticsPage() {
 
   return (
     <div>
-      <PageHeader icon="chart" title="Game Statistics" description="Credits staked, wins, payouts, and net credits by game type — computed live." />
+      <PageHeader icon="chart" title="Game Statistics" description="Credits bet, wins, payouts, and net credits by game type — computed live." />
       <Card>
         {isLoading && <LoadingState />}
         {isError && <ErrorState message={(error as Error).message} />}
@@ -22,7 +22,7 @@ export default function GameStatisticsPage() {
             <THead>
               <Tr>
                 <Th>Game type</Th>
-                <Th>Credits Staked</Th>
+                <Th>Credits Bet</Th>
                 <Th>Wins</Th>
                 <Th>Payouts</Th>
                 <Th>Net Credits</Th>

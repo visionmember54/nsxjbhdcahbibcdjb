@@ -94,7 +94,7 @@ export default function RatesPanel({ marketId, slotId }: { marketId: number; slo
               ))}
             </Select>
           </FormField>
-          <FormField label="Rate (win per 10 credits staked)">
+          <FormField label="Rate (win per 10 credits bet)">
             <Input name="rate" type="number" min={1} required placeholder="e.g. 95" />
           </FormField>
           <FormField label="Effective from">

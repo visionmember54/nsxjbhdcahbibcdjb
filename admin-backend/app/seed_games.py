@@ -36,8 +36,8 @@ RATE_BY_CODE = {
 }
 
 GAME_TYPES = [
-    (vs.SINGLE, "Single / Ank", 1, "NONE"),
-    (vs.JODI, "Jodi", 2, "NONE"),
+    (vs.SINGLE, "Single Digit", 1, "NONE"),
+    (vs.JODI, "Jodi Digit", 2, "NONE"),
     (vs.SINGLE_PANNA, "Single Panna", 3, "PANNA_SINGLE"),
     (vs.DOUBLE_PANNA, "Double Panna", 3, "PANNA_DOUBLE"),
     (vs.TRIPLE_PANNA, "Triple Panna", 3, "PANNA_TRIPLE"),

@@ -11,7 +11,7 @@ export default function SimulationStatisticsPage() {
 
   return (
     <div>
-      <PageHeader icon="chart" title="Simulation Statistics" description="Credits staked, wins, payouts, and net credits by market — computed live." />
+      <PageHeader icon="chart" title="Simulation Statistics" description="Credits bet, wins, payouts, and net credits by market — computed live." />
       <Card>
         {isLoading && <LoadingState />}
         {isError && <ErrorState message={(error as Error).message} />}
@@ -22,7 +22,7 @@ export default function SimulationStatisticsPage() {
             <THead>
               <Tr>
                 <Th>Market</Th>
-                <Th>Credits Staked</Th>
+                <Th>Credits Bet</Th>
                 <Th>Wins</Th>
                 <Th>Payouts</Th>
                 <Th>Net Credits</Th>

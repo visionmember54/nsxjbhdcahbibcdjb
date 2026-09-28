@@ -51,7 +51,12 @@ export default function MarketsListView({ category, title }: { category?: string
                 <Td className="font-medium text-slate-900">{market.name}</Td>
                 <Td>{market.category}</Td>
                 <Td>
-                  <StatusBadge status={market.status} />
+                  <StatusBadge status={market.effective_status} />
+                  {market.effective_status !== market.status && (
+                    <span className="ml-1.5 text-[10px] text-slate-400" title="Admin-set status; will auto-correct on the next status change">
+                      (set: {market.status})
+                    </span>
+                  )}
                 </Td>
                 <Td>{market.opening_time ?? '—'}</Td>
                 <Td>{market.closing_time ?? '—'}</Td>

@@ -51,6 +51,11 @@ export default function MarketDetailPage() {
           <div className="flex items-center gap-2">
             {!market.visible && <Badge tone="slate">Hidden from app</Badge>}
             <StatusBadge status={market.status} />
+            {market.effective_status !== market.status && (
+              <span className="text-xs text-slate-400">
+                (currently: <StatusBadge status={market.effective_status} />)
+              </span>
+            )}
           </div>
         </CardHeader>
         <CardBody>

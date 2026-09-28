@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import PageHeader from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Table, TBody, Td, Th, THead, Tr } from '@/components/ui/Table';
@@ -9,6 +10,7 @@ import Badge from '@/components/ui/Badge';
 import { FormField, Select } from '@/components/ui/Field';
 import Pagination from '@/components/ui/Pagination';
 import { useGlobalCreditLedger } from '@/hooks/useCreditLedger';
+import { ledgerTypeLabel } from '@/lib/ledger';
 
 const TYPE_TONE: Record<string, 'green' | 'blue' | 'purple' | 'amber' | 'slate'> = {
   grant: 'green',
@@ -31,7 +33,7 @@ export default function AllTransactionsPage() {
       <PageHeader
         icon="chart"
         title="All Transactions"
-        description="Every credit ledger entry, across every user — grants, adjustments, resets, stakes, and payouts."
+        description="Every credit ledger entry, across every user — grants, adjustments, resets, bets, and payouts."
       />
       <Card>
         <div className="border-b border-slate-100 p-4">
@@ -47,7 +49,7 @@ export default function AllTransactionsPage() {
               <option value="">All types</option>
               {TYPES.map((t) => (
                 <option key={t} value={t}>
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                  {ledgerTypeLabel(t)}
                 </option>
               ))}
             </Select>
@@ -75,11 +77,13 @@ export default function AllTransactionsPage() {
               {data.items.map((entry) => (
                 <Tr key={entry.id}>
                   <Td className="font-medium text-slate-900">
-                    {entry.userName}
+                    <Link href={`/dashboard/students/${entry.userId}`} className="text-brand-700 hover:underline">
+                      {entry.userName}
+                    </Link>
                     <span className="ml-1.5 text-xs font-normal text-slate-400">{entry.userPhone}</span>
                   </Td>
                   <Td>
-                    <Badge tone={TYPE_TONE[entry.type] ?? 'slate'}>{entry.type}</Badge>
+                    <Badge tone={TYPE_TONE[entry.type] ?? 'slate'}>{ledgerTypeLabel(entry.type)}</Badge>
                   </Td>
                   <Td className={entry.amount >= 0 ? 'font-semibold text-emerald-600' : 'font-semibold text-red-600'}>
                     {entry.amount >= 0 ? '+' : ''}

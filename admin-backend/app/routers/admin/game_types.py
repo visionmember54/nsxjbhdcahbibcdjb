@@ -54,6 +54,8 @@ async def update_game_type(
     game_type = db.get(GameType, game_type_id)
     if not game_type:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game type not found")
+    if payload.name is not None:
+        game_type.name = payload.name.strip()
     if payload.is_active is not None:
         game_type.is_active = payload.is_active
     if payload.display_order is not None:

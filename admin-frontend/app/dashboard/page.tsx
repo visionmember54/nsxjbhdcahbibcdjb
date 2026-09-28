@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useDashboard } from '@/hooks/useDashboard';
 import PageHeader from '@/components/layout/PageHeader';
 import StatTile from '@/components/ui/StatTile';
+import StatTileBreakdown from '@/components/ui/StatTileBreakdown';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Table, TBody, Td, Th, THead, Tr } from '@/components/ui/Table';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States';
@@ -29,18 +30,41 @@ export default function OverviewPage() {
         <>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">All-time totals, across every game and market</p>
           <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
-            <StatTile
+            <StatTileBreakdown
               label="Active Users"
               value={data.stats.activeUsers}
-              hint={`${data.stats.totalUsers} total registered`}
               icon="users"
               tone="blue"
+              href="/dashboard/students?status=active"
+              breakdown={[
+                { label: 'Signed up today', value: data.stats.signupsToday, href: '/dashboard/students?joinedToday=1' },
+                { label: 'Active today', value: data.stats.activeUsersToday, href: '/dashboard/students?activeToday=1' },
+                { label: 'Total registered', value: data.stats.totalUsers, href: '/dashboard/students' },
+              ]}
             />
             <Link href="/dashboard/simulations/history" className="block">
               <StatTile label="Games Played" value={data.stats.totalSimulations.toLocaleString()} hint={`${data.stats.totalWon} won · ${data.stats.totalLost} lost · ${data.stats.totalPending} pending`} icon="play" tone="purple" />
             </Link>
-            <StatTile label="Credits In (Staked)" value={data.stats.totalCreditsStaked.toLocaleString()} icon="coin" tone="emerald" />
-            <StatTile label="Credits Out (Paid)" value={data.stats.totalCreditsPaidOut.toLocaleString()} icon="coin" tone="red" />
+            <StatTileBreakdown
+              label="Credits In (Bet)"
+              value={data.stats.totalCreditsStaked.toLocaleString()}
+              icon="coin"
+              tone="emerald"
+              breakdown={[
+                { label: 'Deposits pending', value: data.stats.depositsPending, href: '/dashboard/wallet-activity/credit-requests?status=Pending&type=Deposit', valueClassName: 'text-amber-600' },
+                { label: 'Deposits approved', value: data.stats.depositsApproved, href: '/dashboard/wallet-activity/credit-requests?status=Approved&type=Deposit', valueClassName: 'text-emerald-600' },
+              ]}
+            />
+            <StatTileBreakdown
+              label="Credits Out (Paid)"
+              value={data.stats.totalCreditsPaidOut.toLocaleString()}
+              icon="coin"
+              tone="red"
+              breakdown={[
+                { label: 'Withdrawals pending', value: data.stats.withdrawalsPending, href: '/dashboard/wallet-activity/credit-requests?status=Pending&type=Withdrawal', valueClassName: 'text-amber-600' },
+                { label: 'Withdrawals approved', value: data.stats.withdrawalsApproved, href: '/dashboard/wallet-activity/credit-requests?status=Approved&type=Withdrawal', valueClassName: 'text-emerald-600' },
+              ]}
+            />
             <StatTile
               label="Net (In − Out)"
               value={data.stats.totalNetCredits.toLocaleString()}
@@ -57,7 +81,17 @@ export default function OverviewPage() {
             <Link href="/dashboard/results/pending" className="block">
               <StatTile label="Pending Results" value={data.stats.pendingResults} icon="clock" tone="amber" />
             </Link>
-            <StatTile label="Active Starline Slots" value={data.stats.activeStarlineSlots} icon="sliders" tone="slate" />
+            <StatTileBreakdown
+              label="Starline Slots"
+              value={data.stats.starlineTotalSlots}
+              icon="sliders"
+              tone="slate"
+              href="/dashboard/markets?category=STARLINE"
+              breakdown={[
+                { label: 'Open now', value: data.stats.starlineOpenSlots, valueClassName: 'text-emerald-600' },
+                { label: 'Closed now', value: data.stats.starlineClosedSlots, valueClassName: 'text-slate-500' },
+              ]}
+            />
             <StatTile label="Total Users" value={data.stats.totalUsers} icon="users" tone="slate" />
           </div>
 
@@ -78,7 +112,7 @@ export default function OverviewPage() {
               </CardHeader>
               <CardBody>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
-                  <div><p className="text-xs font-medium text-slate-500">Credits staked</p><p className="mt-1 text-xl font-bold text-slate-950">{data.today.staked.toLocaleString()}</p></div>
+                  <div><p className="text-xs font-medium text-slate-500">Credits bet</p><p className="mt-1 text-xl font-bold text-slate-950">{data.today.staked.toLocaleString()}</p></div>
                   <div><p className="text-xs font-medium text-slate-500">Payouts</p><p className="mt-1 text-xl font-bold text-slate-950">{data.today.payout.toLocaleString()}</p></div>
                   <div><p className="text-xs font-medium text-slate-500">Net credits</p><p className={`mt-1 text-xl font-bold ${data.today.net >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{data.today.net.toLocaleString()}</p></div>
                   <div><p className="text-xs font-medium text-slate-500">Simulations</p><p className="mt-1 text-xl font-bold text-slate-950">{data.today.simulations.toLocaleString()}</p></div>
@@ -95,7 +129,9 @@ export default function OverviewPage() {
                   <p className="text-xs text-slate-500">Winning simulations</p><p className="mt-1 text-lg font-bold text-emerald-600">{data.today.won}</p>
                 </Link>
                 <div><p className="text-xs text-slate-500">Results published</p><p className="mt-1 text-lg font-bold text-slate-950">{data.today.publishedResults}</p></div>
-                <div><p className="text-xs text-slate-500">New users</p><p className="mt-1 text-lg font-bold text-slate-950">{data.today.newUsers}</p></div>
+                <Link href="/dashboard/students?joinedToday=1" className="block">
+                  <p className="text-xs text-slate-500">New users</p><p className="mt-1 text-lg font-bold text-slate-950">{data.today.newUsers}</p>
+                </Link>
               </CardBody>
             </Card>
           </div>
@@ -120,7 +156,7 @@ export default function OverviewPage() {
               <EmptyState title="No activity today" hint="Today’s market performance will appear as users submit simulations." />
             ) : (
               <Table>
-                <THead><Tr><Th>Market</Th><Th>Simulations</Th><Th>Credits Staked</Th><Th>Payouts</Th><Th>Net Credits</Th></Tr></THead>
+                <THead><Tr><Th>Market</Th><Th>Simulations</Th><Th>Credits Bet</Th><Th>Payouts</Th><Th>Net Credits</Th></Tr></THead>
                 <TBody>
                   {data.todayMarketPerformance.map((row) => (
                     <Tr key={row.marketId}>
@@ -136,7 +172,7 @@ export default function OverviewPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle subtitle="Credits staked, winning simulations, payouts, and net credits by market">Market Statistics</CardTitle>
+              <CardTitle subtitle="Credits bet, winning simulations, payouts, and net credits by market">Market Statistics</CardTitle>
             </CardHeader>
             {data.marketStatistics.length === 0 ? (
               <EmptyState title="No simulations yet" hint="Statistics appear once users start submitting selections." />
@@ -145,7 +181,7 @@ export default function OverviewPage() {
                 <THead>
                   <Tr>
                     <Th>Market</Th>
-                    <Th>Credits Staked</Th>
+                    <Th>Credits Bet</Th>
                     <Th>Wins</Th>
                     <Th>Payouts</Th>
                     <Th>Net Credits</Th>

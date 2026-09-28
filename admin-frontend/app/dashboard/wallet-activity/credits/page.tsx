@@ -14,6 +14,7 @@ import type { Student } from '@/lib/api/types';
 import { useStudents } from '@/hooks/useStudents';
 import { useCreditHistory, useGrantCredits, useAdjustCredits, useResetCredits } from '@/hooks/useCredits';
 import { usePermissions } from '@/hooks/usePermissions';
+import { ledgerTypeLabel } from '@/lib/ledger';
 
 export default function LearningCreditsPage() {
   return (
@@ -111,7 +112,7 @@ function LearningCreditsPageInner() {
                 <TBody>
                   {history.items.map((h) => (
                     <Tr key={h.id}>
-                      <Td className="font-medium text-slate-900">{h.type}</Td>
+                      <Td className="font-medium text-slate-900">{ledgerTypeLabel(h.type)}</Td>
                       <Td className={h.amount >= 0 ? 'text-emerald-600' : 'text-red-600'}>
                         {h.amount >= 0 ? '+' : ''}
                         {h.amount.toLocaleString()}

@@ -21,6 +21,7 @@ from app.models.game_type import GameType
 from sqlalchemy import func
 from datetime import datetime, timezone
 from app.models.audit import AuditLog
+from app.services.app_api_service import ist_day_bounds, today_ist
 
 router = APIRouter(prefix="/admin/users", tags=["users"])
 
@@ -30,6 +31,8 @@ async def list_users(
     pagination: PageParams = Depends(),
     search: str | None = Query(default=None, max_length=120),
     status_filter: str | None = Query(default=None, alias="status"),
+    joined_today: bool = Query(default=False),
+    active_today: bool = Query(default=False),
     current_admin: Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
@@ -39,6 +42,15 @@ async def list_users(
         query = query.filter(or_(User.name.ilike(needle), User.phone.ilike(needle), User.email.ilike(needle)))
     if status_filter in {"active", "disabled"}:
         query = query.filter(User.status == status_filter)
+    if joined_today or active_today:
+        day_start, day_end = ist_day_bounds(today_ist())
+    if joined_today:
+        query = query.filter(User.created_at >= day_start, User.created_at < day_end)
+    if active_today:
+        active_ids = db.query(SimulationEntry.user_id).filter(
+            SimulationEntry.created_at >= day_start, SimulationEntry.created_at < day_end
+        ).distinct()
+        query = query.filter(User.id.in_(active_ids))
     total = query.count()
     rows = query.order_by(User.id.desc()).limit(pagination.limit).offset(pagination.offset).all()
     return Page(items=[UserOut.model_validate(u) for u in rows], total=total, limit=pagination.limit, offset=pagination.offset)

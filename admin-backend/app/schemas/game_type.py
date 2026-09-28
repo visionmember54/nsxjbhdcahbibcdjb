@@ -15,6 +15,7 @@ class GameTypeCreate(BaseModel):
 
 
 class GameTypeUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
     is_active: bool | None = None
     display_order: int | None = None
 

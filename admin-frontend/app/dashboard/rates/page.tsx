@@ -21,7 +21,7 @@ export default function SimulatedRatesPage() {
       <PageHeader
         icon="percent"
         title="Simulated Rates"
-        description="Win per 10 credits staked, time-versioned via effective_from. The 'current' rate is the latest already-effective Active row."
+        description="Win per 10 credits bet, time-versioned via effective_from. The 'current' rate is the latest already-effective Active row."
       />
       <Card>
         <div className="border-b border-slate-100 p-4">

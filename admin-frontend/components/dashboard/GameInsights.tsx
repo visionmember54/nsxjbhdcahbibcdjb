@@ -39,7 +39,7 @@ export default function GameInsights() {
     <div className="mb-6 grid gap-4 xl:grid-cols-5">
       <Card className="xl:col-span-2">
         <CardHeader>
-          <CardTitle subtitle="Credits staked, wins, payouts, and net by game type">Game Statistics</CardTitle>
+          <CardTitle subtitle="Credits bet, wins, payouts, and net by game type">Game Statistics</CardTitle>
         </CardHeader>
         {statsLoading && <LoadingState />}
         {gameStats && gameStats.length === 0 && <EmptyState title="No simulations yet" />}
@@ -48,7 +48,7 @@ export default function GameInsights() {
             <THead>
               <Tr>
                 <Th>Game</Th>
-                <Th>Staked</Th>
+                <Th>Bet</Th>
                 <Th>Wins</Th>
                 <Th>Net</Th>
               </Tr>

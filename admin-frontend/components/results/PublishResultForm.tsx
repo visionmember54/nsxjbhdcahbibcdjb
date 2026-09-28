@@ -174,7 +174,7 @@ export default function PublishResultForm() {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <PreviewStat icon="check" tone="emerald" label="Winners" value={preview.winnersCount} />
             <PreviewStat icon="coin" tone="brand" label="Potential payout" value={preview.totalPotentialPayout.toLocaleString()} />
-            <PreviewStat icon="users" tone="slate" label="Stake at risk" value={preview.totalStakeAtRisk.toLocaleString()} />
+            <PreviewStat icon="users" tone="slate" label="Bet at risk" value={preview.totalStakeAtRisk.toLocaleString()} />
             <PreviewStat icon="clock" tone="amber" label="Unresolved" value={preview.unresolvedEntries} />
           </div>
 

@@ -23,7 +23,7 @@ export default function DashboardCharts({
     <div className="mb-6 grid gap-4 xl:grid-cols-5">
       <Card className="xl:col-span-3">
         <CardHeader>
-          <CardTitle subtitle="Staked credits and payouts across active markets">Today’s Credit Flow</CardTitle>
+          <CardTitle subtitle="Bet credits and payouts across active markets">Today’s Credit Flow</CardTitle>
         </CardHeader>
         <CardBody className="h-72 p-4 sm:p-5">
           {markets.length === 0 ? (
@@ -39,7 +39,7 @@ export default function DashboardCharts({
                   formatter={(value) => formatCredits(Number(value ?? 0))}
                 />
                 <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
-                <Bar dataKey="staked" name="Staked" fill="#158671" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="staked" name="Bet" fill="#158671" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="payout" name="Payout" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

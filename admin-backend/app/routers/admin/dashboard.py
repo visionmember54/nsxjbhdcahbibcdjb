@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
-
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -9,11 +7,14 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_db, require_permission
 from app.models.admin import Admin
 from app.models.audit import AuditLog
+from app.models.credit_request import CreditRequest
 from app.models.game_type import GameType
 from app.models.market import Market, StarlineSlot
 from app.models.market_result import MarketResult
 from app.models.simulation import SimulationEntry
 from app.models.user import User
+from app.services.app_api_service import ist_day_bounds, slot_status, today_ist
+from app.services.market_service import effective_market_status
 from app.services.report_service import compute_market_statistics
 
 router = APIRouter(prefix="/admin/dashboard", tags=["dashboard"])
@@ -21,10 +22,13 @@ router = APIRouter(prefix="/admin/dashboard", tags=["dashboard"])
 
 @router.get("")
 async def get_dashboard(current_admin: Admin = Depends(require_permission("dashboard.view")), db: Session = Depends(get_db)):
-    today = date.today().isoformat()
+    today_date = today_ist()
+    today = today_date.isoformat()
+    day_start, day_end = ist_day_bounds(today_date)
     total_users = db.query(User).count()
     active_users = db.query(User).filter(User.status == "active").count()
-    open_markets = db.query(Market).filter(Market.status == "OPEN").count()
+    all_markets = db.query(Market).all()
+    open_markets = sum(1 for market in all_markets if effective_market_status(market) == "OPEN")
     pending_results = db.query(MarketResult).filter(MarketResult.status == "Draft").count()
     total_simulations = db.query(SimulationEntry).count()
     total_credits_staked = sum(a[0] for a in db.query(SimulationEntry.simulated_credits).all())
@@ -35,6 +39,29 @@ async def get_dashboard(current_admin: Admin = Depends(require_permission("dashb
     total_lost = db.query(SimulationEntry).filter(SimulationEntry.status == "Lost").count()
     total_pending = db.query(SimulationEntry).filter(SimulationEntry.status == "Pending").count()
     active_starline_slots = db.query(StarlineSlot).filter(StarlineSlot.enabled.is_(True)).count()
+
+    starline_rows = db.query(StarlineSlot, Market).join(Market, StarlineSlot.market_id == Market.id).all()
+    starline_open = 0
+    starline_closed = 0
+    for slot, market in starline_rows:
+        status_str, _, _ = slot_status(slot, market)
+        if status_str == "OPEN":
+            starline_open += 1
+        else:
+            starline_closed += 1
+
+    withdrawals_pending = db.query(CreditRequest).filter(
+        CreditRequest.request_type == "Withdrawal", CreditRequest.status == "Pending"
+    ).count()
+    withdrawals_approved = db.query(CreditRequest).filter(
+        CreditRequest.request_type == "Withdrawal", CreditRequest.status == "Approved"
+    ).count()
+    deposits_pending = db.query(CreditRequest).filter(
+        CreditRequest.request_type == "Deposit", CreditRequest.status == "Pending"
+    ).count()
+    deposits_approved = db.query(CreditRequest).filter(
+        CreditRequest.request_type == "Deposit", CreditRequest.status == "Approved"
+    ).count()
 
     popular_market = (
         db.query(Market.name, func.count(SimulationEntry.id).label("count"))
@@ -61,12 +88,15 @@ async def get_dashboard(current_admin: Admin = Depends(require_permission("dashb
         for row in db.query(AuditLog).order_by(AuditLog.id.desc()).limit(8).all()
     ]
 
-    today_entries = db.query(SimulationEntry).filter(func.date(SimulationEntry.created_at) == today).all()
+    today_entries = db.query(SimulationEntry).filter(
+        SimulationEntry.created_at >= day_start, SimulationEntry.created_at < day_end
+    ).all()
     today_staked = sum(entry.simulated_credits for entry in today_entries)
     today_payout = sum(entry.simulated_return for entry in today_entries if entry.status == "Won")
     today_won = sum(1 for entry in today_entries if entry.status == "Won")
     today_pending = sum(1 for entry in today_entries if entry.status == "Pending")
-    today_new_users = db.query(User).filter(func.date(User.created_at) == today).count()
+    today_new_users = db.query(User).filter(User.created_at >= day_start, User.created_at < day_end).count()
+    active_users_today = len({entry.user_id for entry in today_entries})
     today_results = db.query(MarketResult).filter(
         MarketResult.result_date == today,
         MarketResult.status.in_(["Published", "Corrected"]),
@@ -107,6 +137,15 @@ async def get_dashboard(current_admin: Admin = Depends(require_permission("dashb
             "totalLost": total_lost,
             "totalPending": total_pending,
             "activeStarlineSlots": active_starline_slots,
+            "starlineOpenSlots": starline_open,
+            "starlineClosedSlots": starline_closed,
+            "starlineTotalSlots": len(starline_rows),
+            "activeUsersToday": active_users_today,
+            "signupsToday": today_new_users,
+            "withdrawalsPending": withdrawals_pending,
+            "withdrawalsApproved": withdrawals_approved,
+            "depositsPending": deposits_pending,
+            "depositsApproved": deposits_approved,
         },
         "today": {
             "date": today,
@@ -117,6 +156,7 @@ async def get_dashboard(current_admin: Admin = Depends(require_permission("dashb
             "won": today_won,
             "pending": today_pending,
             "newUsers": today_new_users,
+            "activeUsers": active_users_today,
             "publishedResults": today_results,
         },
         "todayMarketPerformance": today_market_performance,

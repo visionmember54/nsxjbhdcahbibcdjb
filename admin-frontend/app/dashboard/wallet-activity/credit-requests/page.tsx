@@ -1,7 +1,9 @@
 'use client';
 
 import { isHttpUrl } from '@/lib/security';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import PageHeader from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Table, TBody, Td, Th, THead, Tr } from '@/components/ui/Table';
@@ -19,16 +21,35 @@ const STATUS_TONE: Record<CreditRequest['status'], 'amber' | 'green' | 'red'> = 
 };
 
 export default function CreditRequestsPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <CreditRequestsPageInner />
+    </Suspense>
+  );
+}
+
+function CreditRequestsPageInner() {
+  const searchParams = useSearchParams();
   const { data, isLoading, isError, error } = useCreditRequests({ limit: 100 });
   const approve = useApproveCreditRequest();
   const reject = useRejectCreditRequest();
   const { has } = usePermissions();
   const canManage = has('credits.manage');
 
-  const [filter, setFilter] = useState<'' | CreditRequest['status']>('Pending');
+  const initialStatus = searchParams.get('status');
+  const initialType = searchParams.get('type');
+
+  const [filter, setFilter] = useState<'' | CreditRequest['status']>(
+    initialStatus === 'Pending' || initialStatus === 'Approved' || initialStatus === 'Rejected' ? initialStatus : 'Pending'
+  );
+  const [typeFilter, setTypeFilter] = useState<'' | 'Deposit' | 'Withdrawal'>(
+    initialType === 'Deposit' || initialType === 'Withdrawal' ? initialType : ''
+  );
   const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
 
-  const requests = (data?.items ?? []).filter((r) => !filter || r.status === filter);
+  const requests = (data?.items ?? []).filter(
+    (r) => (!filter || r.status === filter) && (!typeFilter || r.requestType.toLowerCase() === typeFilter.toLowerCase())
+  );
   const pendingCount = (data?.items ?? []).filter((r) => r.status === 'Pending').length;
 
   return (
@@ -41,17 +62,31 @@ export default function CreditRequestsPage() {
       />
 
       <Card>
-        <div className="flex gap-1 border-b border-slate-100 px-4 py-3">
-          {(['', 'Pending', 'Approved', 'Rejected'] as const).map((s) => (
-            <button
-              key={s || 'all'}
-              onClick={() => setFilter(s)}
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${filter === s ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-100'
-                }`}
-            >
-              {s || 'All'}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+          <div className="flex gap-1">
+            {(['', 'Pending', 'Approved', 'Rejected'] as const).map((s) => (
+              <button
+                key={s || 'all'}
+                onClick={() => setFilter(s)}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${filter === s ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+              >
+                {s || 'All'}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1">
+            {(['', 'Deposit', 'Withdrawal'] as const).map((t) => (
+              <button
+                key={t || 'all-types'}
+                onClick={() => setTypeFilter(t)}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${typeFilter === t ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+              >
+                {t || 'All types'}
+              </button>
+            ))}
+          </div>
         </div>
 
         {isLoading && <LoadingState />}
@@ -77,7 +112,9 @@ export default function CreditRequestsPage() {
               {requests.map((r) => (
                 <Tr key={r.id}>
                   <Td className="font-medium text-slate-900">
-                    {r.userName}
+                    <Link href={`/dashboard/students/${r.userId}`} className="text-brand-700 hover:underline">
+                      {r.userName}
+                    </Link>
                     <span className="ml-1.5 text-xs font-normal text-slate-400">{r.userPhone}</span>
                   </Td>
                   <Td>

@@ -11,6 +11,7 @@ import { Icon } from '@/components/layout/icons';
 import { useDashboard } from '@/hooks/useDashboard';
 import { useCreditRequests } from '@/hooks/useCreditRequests';
 import { useGlobalCreditLedger } from '@/hooks/useCreditLedger';
+import { ledgerTypeLabel } from '@/lib/ledger';
 
 const TYPE_TONE: Record<string, 'green' | 'blue' | 'purple' | 'amber' | 'slate'> = {
   grant: 'green',
@@ -52,7 +53,7 @@ export default function WalletActivityOverviewPage() {
             icon="clock"
             tone={pendingCount > 0 ? 'amber' : 'emerald'}
           />
-          <StatTile label="Credits In (Staked)" value={dashboard.stats.totalCreditsStaked.toLocaleString()} icon="coin" tone="emerald" />
+          <StatTile label="Credits In (Bet)" value={dashboard.stats.totalCreditsStaked.toLocaleString()} icon="coin" tone="emerald" />
           <StatTile label="Credits Out (Paid)" value={dashboard.stats.totalCreditsPaidOut.toLocaleString()} icon="coin" tone="red" />
           <StatTile
             label="Net (In − Out)"
@@ -66,7 +67,7 @@ export default function WalletActivityOverviewPage() {
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
         <Link
-          href="/dashboard/students/credit-requests"
+          href="/dashboard/wallet-activity/credit-requests"
           className="group flex items-center gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-card"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
@@ -128,11 +129,13 @@ export default function WalletActivityOverviewPage() {
               {ledger.items.map((entry) => (
                 <Tr key={entry.id}>
                   <Td className="font-medium text-slate-900">
-                    {entry.userName}
+                    <Link href={`/dashboard/students/${entry.userId}`} className="text-brand-700 hover:underline">
+                      {entry.userName}
+                    </Link>
                     <span className="ml-1.5 text-xs font-normal text-slate-400">{entry.userPhone}</span>
                   </Td>
                   <Td>
-                    <Badge tone={TYPE_TONE[entry.type] ?? 'slate'}>{entry.type}</Badge>
+                    <Badge tone={TYPE_TONE[entry.type] ?? 'slate'}>{ledgerTypeLabel(entry.type)}</Badge>
                   </Td>
                   <Td className={entry.amount >= 0 ? 'font-semibold text-emerald-600' : 'font-semibold text-red-600'}>
                     {entry.amount >= 0 ? '+' : ''}

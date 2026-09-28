@@ -224,7 +224,7 @@ export default function HomePage() {
                 {[
                   { label: 'Open Markets', value: '3', icon: 'market' as IconKey, tone: 'text-emerald-600 bg-emerald-50' },
                   { label: 'Simulations', value: '23', icon: 'play' as IconKey, tone: 'text-purple-600 bg-purple-50' },
-                  { label: 'Credits Staked', value: '1,215', icon: 'coin' as IconKey, tone: 'text-brand-600 bg-brand-50' },
+                  { label: 'Credits Bet', value: '1,215', icon: 'coin' as IconKey, tone: 'text-brand-600 bg-brand-50' },
                 ].map((tile) => (
                   <div key={tile.label} className="rounded-lg border border-slate-200 bg-white p-3 shadow-soft">
                     <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${tile.tone}`}>

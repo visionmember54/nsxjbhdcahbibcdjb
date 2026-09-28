@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Table, TBody, Td, Th, THead, Tr } from '@/components/ui/Table';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -54,7 +55,13 @@ export default function SimulationsTable({
           <TBody>
             {entries.map((e) => (
               <Tr key={e.id}>
-                {showStudent && <Td className="font-medium text-slate-900">{studentsById.get(e.userId)?.name ?? `#${e.userId}`}</Td>}
+                {showStudent && (
+                  <Td className="font-medium text-slate-900">
+                    <Link href={`/dashboard/students/${e.userId}`} className="text-brand-700 hover:underline">
+                      {studentsById.get(e.userId)?.name ?? `#${e.userId}`}
+                    </Link>
+                  </Td>
+                )}
                 <Td className="font-medium text-slate-900">{byId.get(e.marketId)?.name ?? `#${e.marketId}`}</Td>
                 <Td>{e.gameType}</Td>
                 <Td>{e.stage ?? '—'}</Td>

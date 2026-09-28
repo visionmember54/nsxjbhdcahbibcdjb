@@ -6,6 +6,7 @@ import { LoadingState, EmptyState } from '@/components/ui/States';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { useGlobalCreditLedger } from '@/hooks/useCreditLedger';
+import { ledgerTypeLabel } from '@/lib/ledger';
 
 export default function WalletTransactionsOverview() {
   const { data, isLoading, isError, error } = useGlobalCreditLedger({ limit: 50 });
@@ -42,12 +43,14 @@ export default function WalletTransactionsOverview() {
               {data.items.map((t) => (
                 <Tr key={t.id}>
                   <Td className="font-medium text-slate-900">
-                    {t.userName}
+                    <Link href={`/dashboard/students/${t.userId}`} className="text-brand-700 hover:underline">
+                      {t.userName}
+                    </Link>
                     <span className="block text-xs font-normal text-slate-400">{t.userPhone}</span>
                   </Td>
                   <Td>
                     <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
-                      {t.type}
+                      {ledgerTypeLabel(t.type)}
                     </span>
                   </Td>
                   <Td className={`font-bold ${t.amount > 0 ? 'text-emerald-600' : 'text-red-600'}`}>

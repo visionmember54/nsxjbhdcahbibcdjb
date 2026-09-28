@@ -22,6 +22,7 @@ def _market_out(market: Market, category_slug: str) -> MarketOut:
         opening_time=market.opening_time, closing_time=market.closing_time, cutoff_time=market.cutoff_time,
         result_time=market.result_time, display_order=market.display_order, visible=market.visible,
         active_days=market_service.active_days_to_list(market.active_days),
+        effective_status=market_service.effective_market_status(market),
     )
 
 
