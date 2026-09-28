@@ -129,6 +129,7 @@ export interface Market {
   display_order: number;
   visible: boolean;
   active_days: string[] | null;
+  effective_status: MarketStatus;
 }
 
 export interface StarlineSlot {
@@ -388,6 +389,15 @@ export interface DashboardData {
     totalLost: number;
     totalPending: number;
     activeStarlineSlots: number;
+    starlineOpenSlots: number;
+    starlineClosedSlots: number;
+    starlineTotalSlots: number;
+    activeUsersToday: number;
+    signupsToday: number;
+    withdrawalsPending: number;
+    withdrawalsApproved: number;
+    depositsPending: number;
+    depositsApproved: number;
   };
   today: {
     date: string;
@@ -398,6 +408,7 @@ export interface DashboardData {
     won: number;
     pending: number;
     newUsers: number;
+    activeUsers: number;
     publishedResults: number;
   };
   todayMarketPerformance: DailyMarketPerformance[];

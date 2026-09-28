@@ -4,13 +4,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api/client';
 import { Page, Student, UserStats, UserPaymentInfo, UserWithdrawal, UserBid, UserTransaction, UserWinning } from '@/lib/api/types';
 
-export function useStudents(params: { limit?: number; offset?: number; search?: string; status?: 'active' | 'disabled' } = {}) {
-  const { limit = 20, offset = 0, search, status } = params;
+export function useStudents(
+  params: { limit?: number; offset?: number; search?: string; status?: 'active' | 'disabled'; joinedToday?: boolean; activeToday?: boolean } = {}
+) {
+  const { limit = 20, offset = 0, search, status, joinedToday, activeToday } = params;
   const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (search?.trim()) qs.set('search', search.trim());
   if (status) qs.set('status', status);
+  if (joinedToday) qs.set('joined_today', 'true');
+  if (activeToday) qs.set('active_today', 'true');
   return useQuery({
-    queryKey: ['students', limit, offset, search ?? '', status ?? ''],
+    queryKey: ['students', limit, offset, search ?? '', status ?? '', joinedToday ?? false, activeToday ?? false],
     queryFn: () => api.get<Page<Student>>(`/admin/users?${qs.toString()}`),
   });
 }
