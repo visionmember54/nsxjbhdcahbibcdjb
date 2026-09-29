@@ -43,16 +43,27 @@ class SimulationOverride(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class SimulationEdit(BaseModel):
+    selection: str = Field(min_length=1, max_length=20)
+    credits: int = Field(gt=0, le=1_000_000)
+
+
 class SimulationEntryOut(BaseModel):
     id: int
     batchId: int
     userId: int
+    userName: str | None = None
     marketId: int
+    marketName: str | None = None
     slotId: int | None
     gameType: str
     stage: str | None
     selection: str
     gameVariant: str | None
+    openPaana: str | None = None
+    openDigit: str | None = None
+    closePaana: str | None = None
+    closeDigit: str | None = None
     simulatedCredits: int
     simulatedRate: int
     simulatedReturn: int

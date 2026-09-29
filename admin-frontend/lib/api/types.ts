@@ -187,12 +187,18 @@ export interface SimulationEntry {
   id: number;
   batchId: number;
   userId: number;
+  userName: string | null;
   marketId: number;
+  marketName: string | null;
   slotId: number | null;
   gameType: string;
   stage: string | null;
   selection: string;
   gameVariant: 'OPEN_PANNA_CLOSE_ANK' | 'OPEN_ANK_CLOSE_PANNA' | null;
+  openPaana: string | null;
+  openDigit: string | null;
+  closePaana: string | null;
+  closeDigit: string | null;
   simulatedCredits: number;
   simulatedRate: number;
   simulatedReturn: number;

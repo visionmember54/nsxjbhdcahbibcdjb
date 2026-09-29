@@ -12,18 +12,28 @@ function invalidateAfterOverride(qc: ReturnType<typeof useQueryClient>) {
 }
 
 export function useSimulations(
-  params: { studentId?: number; marketId?: number; gameType?: string; status?: string; limit?: number; offset?: number } = {}
+  params: { studentId?: number; marketId?: number; gameType?: string; status?: string; date?: string; limit?: number; offset?: number } = {}
 ) {
-  const { studentId, marketId, gameType, status, limit = 20, offset = 0 } = params;
+  const { studentId, marketId, gameType, status, date, limit = 20, offset = 0 } = params;
   const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (studentId != null) qs.set('user_id', String(studentId));
   if (marketId != null) qs.set('market_id', String(marketId));
   if (gameType) qs.set('game_type', gameType);
   if (status) qs.set('status_filter', status);
+  if (date) qs.set('date', date);
 
   return useQuery({
-    queryKey: ['simulations', studentId ?? null, marketId ?? null, gameType ?? null, status ?? null, limit, offset],
+    queryKey: ['simulations', studentId ?? null, marketId ?? null, gameType ?? null, status ?? null, date ?? null, limit, offset],
     queryFn: () => api.get<Page<SimulationEntry>>(`/admin/simulations?${qs.toString()}`),
+  });
+}
+
+export function useEditSimulation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, selection, credits }: { id: number; selection: string; credits: number }) =>
+      api.patch<SimulationEntry>(`/admin/simulations/${id}`, { selection, credits }),
+    onSuccess: () => invalidateAfterOverride(qc),
   });
 }
 

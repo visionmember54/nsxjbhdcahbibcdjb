@@ -192,3 +192,46 @@ def override_outcome(
     entry.overridden_at = datetime.now(timezone.utc)
     db.flush()
     return entry
+
+
+def edit_pending_entry(
+    db: Session, *, entry_id: int, new_selection: str, new_credits: int, admin_id: int
+) -> SimulationEntry:
+    """Corrects a mistaken bid before it resolves -- selection and/or credits.
+    Only Pending bids are editable: once Won/Lost, the payout has already been
+    computed and paid, so the underlying selection must stay fixed."""
+    entry = db.get(SimulationEntry, entry_id)
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Simulation not found")
+    if entry.status != "Pending":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only a Pending bid can be edited")
+    if new_credits <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Credits must be greater than 0")
+
+    game_type = db.get(GameType, entry.game_type_id)
+    try:
+        validation_service.validate_selection(game_type.code, game_type.classification_rule, new_selection, entry.game_variant)
+    except validation_service.SelectionValidationError as exc:
+        raise AppError(exc.code, str(exc))
+
+    config = _get_config(db, entry.market_id, entry.slot_id, entry.game_type_id, entry.stage)
+    if not (config.min_credits <= new_credits <= config.max_credits):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Credits must be between {config.min_credits} and {config.max_credits}",
+        )
+
+    user = db.get(User, entry.user_id)
+    credits_delta = entry.simulated_credits - new_credits  # positive refunds the user, negative charges more
+    if credits_delta != 0:
+        credit_service.apply_ledger_entry(
+            db, user=user, type="adjustment", amount=credits_delta,
+            reference_type="simulation_entry_edit", reference_id=str(entry.id),
+            created_by_admin_id=admin_id, note=f"Bid corrected: credits {entry.simulated_credits} -> {new_credits}",
+        )
+
+    entry.selection = new_selection.strip()
+    entry.simulated_credits = new_credits
+    entry.simulated_return = validation_service.compute_simulated_return(new_credits, entry.simulated_rate)
+    db.flush()
+    return entry
