@@ -107,7 +107,7 @@ def test_gali_right_digit_with_open_session_from_the_app(client, user_headers):
                 session="OPEN", numbers=[{"number": "7", "points": 50}, {"number": "8", "points": 50}], totalPoints=100)
     assert resp.status_code == 200, resp.text
     bid = _bids(client, user_headers, market_type="GALI_DESAWAR")[0]
-    assert (bid["gameType"], bid["stage"]) == ("SINGLE", "CLOSE")
+    assert (bid["gameType"], bid["stage"]) == ("Single", "CLOSE")
 
 
 def test_gali_left_digit_and_jodi(client, user_headers):
@@ -115,7 +115,7 @@ def test_gali_left_digit_and_jodi(client, user_headers):
     jodi = _bet(client, user_headers, path="/api/v1/gali-desawar/bets", marketId="DISAWAR", betType="JODI DIGIT", session="OPEN", numbers=[{"number": "45", "points": 10}])
     assert left.status_code == 200 and jodi.status_code == 200, (left.text, jodi.text)
     stages = {(b["gameType"], b["stage"]) for b in _bids(client, user_headers, market_type="GALI_DISAWAR")}
-    assert stages == {("SINGLE", "OPEN"), ("JODI", None)}
+    assert stages == {("Single", "OPEN"), ("Jodi", None)}
 
 
 # ---- Open/closed rules match the app's session states ---------------------------
@@ -210,6 +210,16 @@ def test_bid_history_shows_success_not_pending(client, auth_headers, user_header
     # ...and Win History still shows the real, unmasked "WON" status.
     wins = client.get("/api/v1/history/wins", headers=user_headers).json()["data"]["wins"]
     assert wins and wins[0]["status"] == "WON"
+
+
+def test_history_gametype_is_the_display_name_not_the_code(client, auth_headers, user_headers):
+    """Bid/Win History send the admin-editable display name (e.g. "Single"), not
+    the internal code ("SINGLE") -- so renaming a game type in admin is reflected
+    in the app without a client-side release."""
+    mid = _matka_id(client, auth_headers)
+    _bet(client, user_headers, marketId=str(mid), betType="SINGLE DIGIT", session="OPEN", items=[{"number": "5", "points": 10}])
+    bid = _bids(client, user_headers)[0]
+    assert bid["gameType"] == "Single"
 
 
 def test_history_market_type_spellings(client, auth_headers, user_headers):

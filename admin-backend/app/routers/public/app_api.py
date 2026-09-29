@@ -714,13 +714,13 @@ _HISTORY_DATE_FMT = "%d-%m-%Y"
 _EARLIEST_HISTORY_DATE = date(2020, 1, 1)
 
 
-def _entry_out(entry: SimulationEntry, game_type_code: str, market_name: str, mask_status: bool = False) -> dict:
+def _entry_out(entry: SimulationEntry, game_type_name: str, market_name: str, mask_status: bool = False) -> dict:
     return {
         "id": str(entry.id),
         "batchId": str(entry.batch_id),
         "marketId": str(entry.market_id),
         "marketName": market_name,
-        "gameType": game_type_code,
+        "gameType": game_type_name,
         "stage": entry.stage,
         "selection": entry.selection,
         "gameVariant": entry.game_variant,
@@ -785,7 +785,7 @@ def _history_page(
     total = query.count()
     offset = max(0, (page - 1) * limit)
     entries = query.order_by(SimulationEntry.id.desc()).limit(limit).offset(offset).all()
-    game_types = {g.id: g.code for g in db.query(GameType).all()}
+    game_types = {g.id: g.name for g in db.query(GameType).all()}
     markets = {m.id: m.name for m in db.query(Market).all()}
     items = [_entry_out(e, game_types.get(e.game_type_id, ""), markets.get(e.market_id, ""), mask_status=mask_status) for e in entries]
     return items, total
