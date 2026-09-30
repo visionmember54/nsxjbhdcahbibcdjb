@@ -11,7 +11,7 @@ from app.core.security import hash_password
 from app.models.admin import Admin
 from app.models.user import User
 from app.schemas.common import Page, PageParams
-from app.schemas.user import UserCreate, UserCreatedOut, UserOut, UserUpdate, UserStatsOut, UserPaymentInfoOut, UserWithdrawalOut, UserBidOut, UserTransactionOut, UserWinningOut
+from app.schemas.user import UserCreate, UserCreatedOut, UserOut, UserUpdate, UserStatsOut, UserPaymentInfoOut, UserWithdrawalOut, UserBidOut, UserTransactionOut, UserWinningOut, UserNotifyRequest
 from app.models.credit import CreditLedger
 from app.models.credit_request import CreditRequest
 from app.models.user_payment_info import UserPaymentInfo
@@ -21,7 +21,10 @@ from app.models.game_type import GameType
 from sqlalchemy import func
 from datetime import datetime, timezone
 from app.models.audit import AuditLog
+from app.services import firebase_service
 from app.services.app_api_service import ist_day_bounds, today_ist
+from app.core import errors
+from app.core.errors import AppError
 
 router = APIRouter(prefix="/admin/users", tags=["users"])
 
@@ -253,3 +256,27 @@ async def reset_user_password(
     db.add(AuditLog(actor=current_admin.name, action="user_password_reset", details=f"Admin reset password for user: {user.name}", subject_user_id=user.id, created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
     db.commit()
     return {"message": "Password reset", "temporary_password": temporary_password}
+
+
+@router.post("/{user_id}/notify")
+async def notify_user(
+    user_id: int,
+    payload: UserNotifyRequest,
+    current_admin: Admin = Depends(require_permission("users.manage")),
+    db: Session = Depends(get_db),
+):
+    """Sends one push notification to this user's device via Firebase Cloud
+    Messaging, using the fcm_token captured at their last login/register."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not user.fcm_token:
+        raise AppError(errors.NO_FCM_TOKEN, f"{user.name} has no registered device to notify")
+    message_id = firebase_service.send_push(user.fcm_token, payload.title, payload.body)
+    db.add(AuditLog(
+        actor=current_admin.name, action="user_notified",
+        details=f"Push sent to {user.name}: \"{payload.title}\" -- {payload.body}",
+        subject_user_id=user.id, created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+    ))
+    db.commit()
+    return {"message": "Notification sent", "firebaseMessageId": message_id}

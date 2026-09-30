@@ -33,3 +33,15 @@ def login(db: Session, phone: str, password: str, request: Request | None = None
 
     token = create_access_token(user.phone, "user")
     return token, user
+
+
+def login_by_verified_phone(db: Session, phone: str) -> tuple[str, User]:
+    """Passwordless login: the caller has already proven ownership of `phone`
+    (a verified Firebase Phone Auth token), so no password check here."""
+    user = db.query(User).filter(User.phone == phone).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No account found for this phone number")
+    if user.status != "active":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User account is disabled")
+    token = create_access_token(user.phone, "user")
+    return token, user

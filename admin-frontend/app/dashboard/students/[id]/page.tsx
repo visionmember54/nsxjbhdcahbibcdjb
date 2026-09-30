@@ -17,9 +17,11 @@ import {
   useUserBids,
   useUserTransactions,
   useUserWinnings,
-  useResetPassword
+  useResetPassword,
+  useNotifyUser
 } from '@/hooks/useStudents';
 import Button from '@/components/ui/Button';
+import { FormField, Input, Textarea } from '@/components/ui/Field';
 import { useState } from 'react';
 
 export default function StudentDetailPage() {
@@ -34,8 +36,11 @@ export default function StudentDetailPage() {
   const transactions = useUserTransactions(studentId);
   const winnings = useUserWinnings(studentId);
   const resetPassword = useResetPassword();
+  const notifyUser = useNotifyUser();
 
   const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [notifyTitle, setNotifyTitle] = useState('');
+  const [notifyBody, setNotifyBody] = useState('');
 
   if (student.isLoading) return <LoadingState />;
   if (student.isError) return <ErrorState message={(student.error as Error).message} />;
@@ -46,6 +51,20 @@ export default function StudentDetailPage() {
     resetPassword.mutate(studentId, {
       onSuccess: (res) => setTempPassword(res.temporary_password),
     });
+  };
+
+  const handleSendNotification = () => {
+    if (!notifyTitle.trim() || !notifyBody.trim()) return;
+    notifyUser.mutate(
+      { studentId, title: notifyTitle.trim(), body: notifyBody.trim() },
+      {
+        onSuccess: () => {
+          toast(`Notification sent to ${user.name}`);
+          setNotifyTitle('');
+          setNotifyBody('');
+        },
+      }
+    );
   };
 
   return <div>
@@ -69,6 +88,29 @@ export default function StudentDetailPage() {
             {tempPassword && <div className="mt-2"><TempPassword password={tempPassword} /></div>}
           </div>
         </div>
+      </CardBody>
+    </Card>
+
+    <Card className="mb-6">
+      <CardHeader><CardTitle subtitle={user.has_fcm_token ? 'This device is registered for push' : 'No device registered yet — user must log in from the app first'}>Send Notification</CardTitle></CardHeader>
+      <CardBody>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormField label="Title">
+            <Input value={notifyTitle} onChange={(e) => setNotifyTitle(e.target.value)} placeholder="e.g. Result published" maxLength={120} />
+          </FormField>
+          <FormField label="Message">
+            <Textarea value={notifyBody} onChange={(e) => setNotifyBody(e.target.value)} placeholder="e.g. KALYAN NIGHT result is out — check your bids." rows={1} maxLength={500} />
+          </FormField>
+        </div>
+        {notifyUser.isError && <p className="mb-2 text-xs text-red-600">{(notifyUser.error as Error).message}</p>}
+        <Button
+          size="sm"
+          onClick={handleSendNotification}
+          loading={notifyUser.isPending}
+          disabled={!user.has_fcm_token || !notifyTitle.trim() || !notifyBody.trim()}
+        >
+          Send
+        </Button>
       </CardBody>
     </Card>
 

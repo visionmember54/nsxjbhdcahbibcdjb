@@ -24,6 +24,7 @@ from app.schemas.simulation import (
     SimulationOverride,
 )
 from app.services import simulation_service
+from app.services.app_api_service import ist_day_bounds
 from datetime import datetime, timezone
 from app.models.audit import AuditLog
 
@@ -110,7 +111,8 @@ async def list_simulations(
     if status_filter:
         query = query.filter(SimulationEntry.status == status_filter.strip().capitalize())
     if date is not None:
-        query = query.filter(func.date(SimulationEntry.created_at) == date)
+        start, end = ist_day_bounds(date)
+        query = query.filter(SimulationEntry.created_at >= start, SimulationEntry.created_at < end)
     total = query.count()
     rows = query.order_by(SimulationEntry.id.desc()).limit(pagination.limit).offset(pagination.offset).all()
     items = [_entry_out(e, code, user_name, market_name) for e, code, user_name, market_name in rows]

@@ -21,4 +21,5 @@ class User(Base):
     balance: Mapped[int] = mapped_column(Integer, default=0)
     security_pin: Mapped[str | None] = mapped_column(String(10), nullable=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fcm_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

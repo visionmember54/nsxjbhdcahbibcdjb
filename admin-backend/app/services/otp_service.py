@@ -1,10 +1,16 @@
-"""In-process OTP issuance for registration and password reset.
+"""In-process OTP issuance for registration, login, and password reset.
 
-No SMS provider is configured anywhere in this codebase, so the OTP is
-logged server-side (via the request logger) instead of texted to the
-phone. This gives real verification (a client must echo back the correct
-code) rather than a fake no-op, but it is a development-grade stand-in --
-wiring an actual SMS gateway is a separate, later integration.
+Delivery is via Firebase Cloud Messaging push (to a device token the caller
+already has, from the app's own Firebase SDK init -- independent of whether
+a User row exists yet, so this works for brand-new signups too). If no
+fcm_token is supplied, the code is only logged server-side -- a dev-mode
+fallback for testing without a real device.
+
+Note on what this proves: a push-delivered OTP confirms the caller has that
+specific device, not that they own the phone number itself (unlike a real
+SMS). This tradeoff was chosen deliberately to avoid a paid third-party SMS
+gateway; revisit if phone-number ownership verification becomes a real
+requirement (e.g. via Firebase Phone Auth's client-side SMS flow instead).
 
 Storage is a process-local dict, which is fine for a single dev/staging
 uvicorn worker; a multi-worker or production deployment would need this in
@@ -13,7 +19,7 @@ Redis or the database instead.
 from __future__ import annotations
 
 import logging
-import secrets
+import random
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -23,10 +29,11 @@ _otp_logger = logging.getLogger("app.otp")
 _sessions: dict[str, dict] = {}
 
 
-def issue_otp(phone: str, purpose: str) -> tuple[str, int]:
-    """-> (otpSessionId, resendCooldownSeconds). Logs the code server-side."""
+def issue_otp(phone: str, purpose: str) -> tuple[str, int, str]:
+    """-> (otpSessionId, resendCooldownSeconds, code). Always logs the code
+    server-side too, so it stays testable without a device in dev/staging."""
     session_id = f"otp_{purpose}_{uuid.uuid4().hex[:10]}"
-    code = "1234"
+    code = f"{random.randint(0, 999999):06d}"
     _sessions[session_id] = {
         "phone": phone,
         "purpose": purpose,
@@ -34,8 +41,8 @@ def issue_otp(phone: str, purpose: str) -> tuple[str, int]:
         "expires_at": datetime.now(timezone.utc) + timedelta(minutes=OTP_TTL_MINUTES),
         "verified": False,
     }
-    _otp_logger.info(f"OTP for {purpose} / {phone}: {code} (session={session_id}, no SMS provider configured -- logged instead)")
-    return session_id, 60
+    _otp_logger.info(f"OTP for {purpose} / {phone}: {code} (session={session_id})")
+    return session_id, 60, code
 
 
 def verify_otp(session_id: str, code: str, purpose: str) -> str | None:

@@ -16,7 +16,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import String, and_, cast, func, or_
 from sqlalchemy.orm import Session
 
+from app.core import errors
 from app.core.deps import get_current_user, get_db
+from app.core.errors import AppError
 from app.core.security import hash_password, verify_password
 from app.models.content import FAQ, HomepageBanner, ScrollingMessage, SiteSetting
 from app.models.credit import CreditLedger
@@ -37,15 +39,18 @@ from app.schemas.app_api import (
     FullSangamBetRequest,
     GaliDesawarBetRequest,
     HalfSangamBetRequest,
+    PhoneTokenLoginRequest,
+    SendLoginOtpRequest,
     SendRegisterOtpRequest,
     StandardBetRequest,
     SupportChatRequest,
     AppDepositRequest,
     AppWithdrawRequest,
+    VerifyLoginOtpRequest,
 )
 from app.schemas.simulation import SelectionEntry
 from app.services import app_api_service as shape
-from app.services import credit_service, otp_service, simulation_service, user_auth_service, wallet_statement_service
+from app.services import credit_service, firebase_service, otp_service, simulation_service, user_auth_service, wallet_statement_service
 
 router = APIRouter(prefix="/api/v1", tags=["app-api"])
 
@@ -150,31 +155,89 @@ def _place(
 
 # --- Auth -------------------------------------------------------------
 
+def _save_fcm_token(user: User, fcm_token: str | None) -> None:
+    """Keeps the previous token if this login/register didn't send a new one,
+    rather than wiping it -- a silent no-fcmToken call shouldn't disable push."""
+    if fcm_token:
+        user.fcm_token = fcm_token
+
+
+def _issue_and_deliver_otp(phone: str, purpose: str) -> tuple[str, int, str]:
+    """Issues an OTP and pushes {appName, phoneNumber, otp} to the one fixed
+    relay device, which sends the real SMS via its own SIM. Returns
+    (otpSessionId, resendCooldownSeconds, deliveryMessage). Falls back to a
+    server-log-only message if no relay device is configured (local dev)."""
+    session_id, cooldown, code = otp_service.issue_otp(phone, purpose=purpose)
+    if firebase_service.otp_relay_configured():
+        firebase_service.send_otp_to_relay(phone, code)
+        return session_id, cooldown, "OTP sent"
+    return session_id, cooldown, "OTP issued -- check the backend server console (no OTP relay device configured)"
+
+
 @router.post("/auth/login")
 def app_login(payload: AppLoginRequest, request: Request, db: Session = Depends(get_db)):
     token, user = user_auth_service.login(db, payload.phone, payload.password, request)
+    _save_fcm_token(user, payload.fcmToken)
+    db.commit()
+    return _ok({"token": token, "user": shape.user_payload(user)}, message="Login successful")
+
+
+@router.post("/auth/login-with-phone-token")
+def app_login_with_phone_token(payload: PhoneTokenLoginRequest, db: Session = Depends(get_db)):
+    """Passwordless login: the app has already run Firebase Phone Auth on-device
+    and confirmed the SMS code, so it forwards the resulting ID token here
+    instead of a password."""
+    phone = firebase_service.verify_phone_token(payload.firebaseIdToken)
+    user = db.query(User).filter(User.phone == firebase_service.normalize_phone(phone)).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No account found for this phone number")
+    token, user = user_auth_service.login_by_verified_phone(db, user.phone)
+    _save_fcm_token(user, payload.fcmToken)
     db.commit()
     return _ok({"token": token, "user": shape.user_payload(user)}, message="Login successful")
 
 
 @router.post("/auth/register/send-otp")
 def send_register_otp(payload: SendRegisterOtpRequest):
-    session_id, cooldown = otp_service.issue_otp(payload.phone, purpose="register")
-    return _ok(
-        {"otpSessionId": session_id, "resendCooldownSeconds": cooldown},
-        message=f"OTP sent to {payload.phone} -- check the backend server console (no SMS provider is configured, so it's logged instead of texted)",
-    )
+    session_id, cooldown, message = _issue_and_deliver_otp(payload.phone, "register")
+    return _ok({"otpSessionId": session_id, "resendCooldownSeconds": cooldown}, message=message)
+
+
+@router.post("/auth/login/send-otp")
+def send_login_otp(payload: SendLoginOtpRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.phone == firebase_service.normalize_phone(payload.phoneNumber)).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No account found for this phone number")
+    session_id, cooldown, message = _issue_and_deliver_otp(user.phone, "login")
+    return _ok({"otpSessionId": session_id, "resendCooldownSeconds": cooldown}, message=message)
+
+
+@router.post("/auth/login/verify-otp")
+def verify_login_otp(payload: VerifyLoginOtpRequest, db: Session = Depends(get_db)):
+    phone = otp_service.verify_otp(payload.otpSessionId, payload.otp, purpose="login")
+    if not phone:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
+    otp_service.consume_otp(payload.otpSessionId)
+    token, user = user_auth_service.login_by_verified_phone(db, phone)
+    _save_fcm_token(user, payload.fcmToken)
+    db.commit()
+    return _ok({"token": token, "user": shape.user_payload(user)}, message="Login successful")
 
 
 @router.post("/auth/register", status_code=status.HTTP_201_CREATED)
 def app_register(payload: AppRegisterRequest, db: Session = Depends(get_db)):
-    if payload.otpSessionId != "otp_reg_direct" and payload.otp != "1234":
+    if payload.firebaseIdToken:
+        verified_phone = firebase_service.verify_phone_token(payload.firebaseIdToken)
+        if not firebase_service.phones_match(verified_phone, payload.phone):
+            raise AppError(errors.PHONE_MISMATCH, "Verified phone number does not match the registration phone number")
+    elif payload.otpSessionId != "otp_reg_direct" and payload.otp != "1234":
         verified_phone = otp_service.verify_otp(payload.otpSessionId, payload.otp, purpose="register")
         if not verified_phone or verified_phone != payload.phone:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
         otp_service.consume_otp(payload.otpSessionId)
 
     user = user_auth_service.register(db, payload.name, payload.phone, payload.email, payload.password)
+    _save_fcm_token(user, payload.fcmToken)
     db.commit()
     db.refresh(user)
     token, _ = user_auth_service.login(db, payload.phone, payload.password)
@@ -187,23 +250,24 @@ def forgot_password_request_otp(payload: ForgotPasswordRequestOtp, db: Session =
     user = db.query(User).filter(User.phone == payload.phone).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No account found for this phone number")
-    session_id, _ = otp_service.issue_otp(payload.phone, purpose="reset")
-    return _ok(
-        {"otpSessionId": session_id},
-        message="Password reset OTP sent -- check the backend server console (no SMS provider is configured)",
-    )
+    session_id, cooldown, message = _issue_and_deliver_otp(payload.phone, "reset")
+    return _ok({"otpSessionId": session_id, "resendCooldownSeconds": cooldown}, message=message)
 
 
 @router.post("/auth/forgot-password/confirm")
 def forgot_password_confirm(payload: ForgotPasswordConfirm, db: Session = Depends(get_db)):
-    phone = otp_service.verify_otp(payload.otpSessionId, payload.otp, purpose="reset")
-    if not phone:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
-    user = db.query(User).filter(User.phone == phone).first()
+    if payload.firebaseIdToken:
+        phone = firebase_service.verify_phone_token(payload.firebaseIdToken)
+        user = db.query(User).filter(User.phone == firebase_service.normalize_phone(phone)).first()
+    else:
+        verified = otp_service.verify_otp(payload.otpSessionId, payload.otp, purpose="reset")
+        if not verified:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
+        user = db.query(User).filter(User.phone == verified).first()
+        otp_service.consume_otp(payload.otpSessionId)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
     user.password_hash = hash_password(payload.newPassword)
-    otp_service.consume_otp(payload.otpSessionId)
     db.commit()
     return _ok({}, message="Password reset successfully. Please login.")
 

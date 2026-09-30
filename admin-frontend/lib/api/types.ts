@@ -41,6 +41,7 @@ export interface Student {
   balance: number;
   last_seen: string | null;
   created_at: string;
+  has_fcm_token: boolean;
 }
 
 export interface UserStats {

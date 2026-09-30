@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 class UserRegister(BaseModel):
@@ -27,8 +27,15 @@ class UserOut(BaseModel):
     balance: int
     last_seen: datetime | None = None
     created_at: datetime
+    # Pulled from the ORM column but never serialized raw -- only whether one exists (see below).
+    fcm_token: str | None = Field(default=None, exclude=True)
 
     model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def has_fcm_token(self) -> bool:
+        return bool(self.fcm_token)
 
 
 class UserStatsOut(BaseModel):
@@ -113,3 +120,8 @@ class UserCreate(BaseModel):
     email: str = ""
     # Omit to have the server generate a random temporary password (returned once on create).
     password: str | None = Field(min_length=8, max_length=255, default=None)
+
+
+class UserNotifyRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    body: str = Field(min_length=1, max_length=500)

@@ -24,8 +24,20 @@ class AppLoginRequest(BaseModel):
     deviceInfo: DeviceInfo | None = None
 
 
+class PhoneTokenLoginRequest(BaseModel):
+    """Passwordless login: proves phone ownership via a Firebase Phone Auth
+    ID token instead of a password."""
+    firebaseIdToken: str = Field(min_length=1)
+    fcmToken: str | None = None
+    deviceInfo: DeviceInfo | None = None
+
+
 class SendRegisterOtpRequest(BaseModel):
     phone: str = Field(min_length=6, max_length=20)
+    # Present -> delivered as a push notification (the app already has its own
+    # device token before any account exists). Absent -> dev-mode: logged only.
+    fcmToken: str | None = None
+    appName: str | None = None
 
 
 class AppRegisterRequest(BaseModel):
@@ -34,18 +46,51 @@ class AppRegisterRequest(BaseModel):
     password: str = Field(min_length=6, max_length=255)
     email: str = ""
     fcmToken: str | None = None
-    otpSessionId: str
-    otp: str
+    # Legacy dev-mode verification (kept for older app builds already in the wild).
+    otpSessionId: str | None = None
+    otp: str | None = None
+    # Real verification: a Firebase Phone Auth ID token, once the phone's SMS
+    # code has been confirmed on the device. Preferred over otpSessionId/otp.
+    firebaseIdToken: str | None = None
+
+    @model_validator(mode="after")
+    def _require_a_verification_method(self):
+        if not self.firebaseIdToken and not (self.otpSessionId and self.otp):
+            raise ValueError("firebaseIdToken (or otpSessionId + otp) is required")
+        return self
 
 
 class ForgotPasswordRequestOtp(BaseModel):
     phone: str = Field(min_length=6, max_length=20)
+    fcmToken: str | None = None
+    appName: str | None = None
+
+
+class SendLoginOtpRequest(BaseModel):
+    phoneNumber: str = Field(min_length=6, max_length=20)
+    # No longer needed for delivery (OTP now goes to the fixed relay device),
+    # kept accepted for forward-compat with clients that still send it.
+    fcmToken: str | None = None
+    appName: str | None = None
+
+
+class VerifyLoginOtpRequest(BaseModel):
+    otpSessionId: str
+    otp: str
+    fcmToken: str | None = None
 
 
 class ForgotPasswordConfirm(BaseModel):
-    otpSessionId: str
-    otp: str
+    otpSessionId: str | None = None
+    otp: str | None = None
+    firebaseIdToken: str | None = None
     newPassword: str = Field(min_length=6, max_length=255)
+
+    @model_validator(mode="after")
+    def _require_a_verification_method(self):
+        if not self.firebaseIdToken and not (self.otpSessionId and self.otp):
+            raise ValueError("firebaseIdToken (or otpSessionId + otp) is required")
+        return self
 
 
 class ChangePasswordRequest(BaseModel):
