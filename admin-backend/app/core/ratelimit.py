@@ -56,5 +56,51 @@ def clear_login_failures(account: str) -> None:
     _failures.pop(f"acct:{account.strip().lower()}", None)
 
 
+# --- OTP send throttling -----------------------------------------------------
+# A real SMS goes out through the relay device's SIM on every OTP send -- unlike
+# a login attempt, there's a real cost (and carrier spam-flagging risk) to letting
+# this run unbounded. Enforces the cooldown the response already advertises, plus
+# a per-number and per-IP cap over a longer window.
+OTP_RESEND_COOLDOWN_SECONDS = 60
+OTP_MAX_PER_NUMBER_WINDOW = 5
+OTP_MAX_PER_IP_WINDOW = 20
+OTP_WINDOW_SECONDS = 30 * 60
+
+
+def check_otp_send_allowed(request: Request, phone: str) -> None:
+    phone_key = f"otp_phone:{phone.strip()}"
+    ip_key = f"otp_ip:{client_ip(request)}"
+    now = time.time()
+
+    phone_hits = _recent(phone_key, OTP_WINDOW_SECONDS)
+    if phone_hits:
+        elapsed = now - phone_hits[-1]
+        if elapsed < OTP_RESEND_COOLDOWN_SECONDS:
+            retry = max(1, int(OTP_RESEND_COOLDOWN_SECONDS - elapsed))
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Please wait before requesting another OTP.",
+                headers={"Retry-After": str(retry)},
+            )
+    if len(phone_hits) >= OTP_MAX_PER_NUMBER_WINDOW:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many OTP requests for this number. Please try again later.",
+        )
+
+    ip_hits = _recent(ip_key, OTP_WINDOW_SECONDS)
+    if len(ip_hits) >= OTP_MAX_PER_IP_WINDOW:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many OTP requests from this network. Please try again later.",
+        )
+
+
+def record_otp_send(request: Request, phone: str) -> None:
+    now = time.time()
+    _failures.setdefault(f"otp_phone:{phone.strip()}", []).append(now)
+    _failures.setdefault(f"otp_ip:{client_ip(request)}", []).append(now)
+
+
 def reset() -> None:
     _failures.clear()

@@ -7,7 +7,27 @@ there is deliberately no deposit/withdrawal/bank-detail schema in this file.
 """
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+import re
+from typing import Annotated
+
+from pydantic import AfterValidator, BaseModel, Field, model_validator
+
+_PHONE_SHAPE_RE = re.compile(r"^\+?[\d\s\-()]+$")
+
+
+def _validate_otp_phone(value: str) -> str:
+    """A real SMS goes out through the relay device for every one of these --
+    reject obviously-malformed input before it wastes a relay send."""
+    value = value.strip()
+    if not _PHONE_SHAPE_RE.match(value):
+        raise ValueError("Phone number may only contain digits, spaces, dashes, parentheses, and a leading +")
+    digit_count = sum(ch.isdigit() for ch in value)
+    if not (7 <= digit_count <= 15):
+        raise ValueError("Phone number must have between 7 and 15 digits")
+    return value
+
+
+OtpPhone = Annotated[str, Field(min_length=6, max_length=20), AfterValidator(_validate_otp_phone)]
 
 
 class DeviceInfo(BaseModel):
@@ -33,7 +53,7 @@ class PhoneTokenLoginRequest(BaseModel):
 
 
 class SendRegisterOtpRequest(BaseModel):
-    phone: str = Field(min_length=6, max_length=20)
+    phone: OtpPhone
     # Present -> delivered as a push notification (the app already has its own
     # device token before any account exists). Absent -> dev-mode: logged only.
     fcmToken: str | None = None
@@ -42,7 +62,7 @@ class SendRegisterOtpRequest(BaseModel):
 
 class AppRegisterRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    phone: str = Field(min_length=6, max_length=20)
+    phone: OtpPhone
     password: str = Field(min_length=6, max_length=255)
     email: str = ""
     fcmToken: str | None = None
@@ -61,13 +81,13 @@ class AppRegisterRequest(BaseModel):
 
 
 class ForgotPasswordRequestOtp(BaseModel):
-    phone: str = Field(min_length=6, max_length=20)
+    phone: OtpPhone
     fcmToken: str | None = None
     appName: str | None = None
 
 
 class SendLoginOtpRequest(BaseModel):
-    phoneNumber: str = Field(min_length=6, max_length=20)
+    phoneNumber: OtpPhone
     # No longer needed for delivery (OTP now goes to the fixed relay device),
     # kept accepted for forward-compat with clients that still send it.
     fcmToken: str | None = None

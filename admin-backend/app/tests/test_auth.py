@@ -40,6 +40,9 @@ def test_admin_login_rate_limited_after_five_attempts(client):
         assert resp.status_code == 401
     resp = client.post("/admin/auth/login", json={"email": "nope@kalyan.com", "password": "wrong"})
     assert resp.status_code == 429
+    # Regression: the global HTTPException handler used to rebuild the response
+    # without forwarding exc.headers, silently dropping Retry-After.
+    assert "Retry-After" in resp.headers
 
 
 def test_user_register_and_login(client):

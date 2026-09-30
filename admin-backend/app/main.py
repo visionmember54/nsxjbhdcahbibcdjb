@@ -110,7 +110,7 @@ _STATUS_TO_ERROR_CODE = {
 }
 
 
-def _error_envelope(status_code: int, error_code: str, message: str) -> JSONResponse:
+def _error_envelope(status_code: int, error_code: str, message: str, headers: dict | None = None) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
         content={
@@ -120,6 +120,7 @@ def _error_envelope(status_code: int, error_code: str, message: str) -> JSONResp
             "message": message,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },
+        headers=headers,
     )
 
 
@@ -132,7 +133,10 @@ async def app_error_handler(request, exc: AppError):
 async def http_exception_handler(request, exc: HTTPException):
     code = _STATUS_TO_ERROR_CODE.get(exc.status_code, "ERROR")
     message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-    return _error_envelope(exc.status_code, code, message)
+    # HTTPException.headers carries things like Retry-After (used by the login
+    # and OTP rate limiters) -- previously dropped here, which silently broke
+    # both retry-timing signals.
+    return _error_envelope(exc.status_code, code, message, headers=exc.headers)
 
 
 @app.exception_handler(RequestValidationError)
