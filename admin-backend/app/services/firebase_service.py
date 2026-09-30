@@ -31,6 +31,7 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 
 _push_logger = logging.getLogger("app.push")
+_firebase_logger = logging.getLogger("app.firebase")
 
 _app: firebase_admin.App | None = None
 _lock = threading.Lock()
@@ -40,10 +41,7 @@ _init_attempted = False
 def _load_credentials() -> credentials.Certificate | None:
     settings = get_settings()
     if settings.FIREBASE_SERVICE_ACCOUNT_JSON:
-        try:
-            info = json.loads(settings.FIREBASE_SERVICE_ACCOUNT_JSON)
-        except json.JSONDecodeError:
-            return None
+        info = json.loads(settings.FIREBASE_SERVICE_ACCOUNT_JSON)
         return credentials.Certificate(info)
     if os.path.isfile(settings.FIREBASE_SERVICE_ACCOUNT_PATH):
         return credentials.Certificate(settings.FIREBASE_SERVICE_ACCOUNT_PATH)
@@ -58,11 +56,22 @@ def _get_app() -> firebase_admin.App | None:
         if _app is not None or _init_attempted:
             return _app
         _init_attempted = True
-        cred = _load_credentials()
-        if cred is None:
+        try:
+            cred = _load_credentials()
+            if cred is None:
+                _firebase_logger.warning(
+                    "Firebase not configured: neither FIREBASE_SERVICE_ACCOUNT_JSON nor "
+                    "FIREBASE_SERVICE_ACCOUNT_PATH resolved to usable credentials."
+                )
+                return None
+            _app = firebase_admin.initialize_app(cred, name="kalyan-otp")
+            return _app
+        except Exception:
+            # Logged with a full traceback so a malformed/truncated env var value is
+            # actually diagnosable in Render's logs, instead of surfacing as an opaque
+            # "not configured" on every request for the rest of this process's life.
+            _firebase_logger.exception("Firebase Admin SDK failed to initialize -- check FIREBASE_SERVICE_ACCOUNT_JSON")
             return None
-        _app = firebase_admin.initialize_app(cred, name="kalyan-otp")
-        return _app
 
 
 def is_configured() -> bool:
