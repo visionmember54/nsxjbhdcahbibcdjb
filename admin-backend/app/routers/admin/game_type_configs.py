@@ -20,7 +20,7 @@ def _config_out(config: GameTypeConfig, code: str) -> GameTypeConfigOut:
         game_type_code=code, stage=config.stage, enabled=config.enabled, min_credits=config.min_credits,
         max_credits=config.max_credits, bulk_enabled=config.bulk_enabled, max_bulk_selections=config.max_bulk_selections,
         same_amount_allowed=config.same_amount_allowed, individual_amount_allowed=config.individual_amount_allowed,
-        duplicate_selection_allowed=config.duplicate_selection_allowed,
+        duplicate_selection_allowed=config.duplicate_selection_allowed, display_order=config.display_order,
     )
 
 
@@ -36,7 +36,7 @@ async def list_configs(
     )
     if slot_id is not None:
         query = query.filter(GameTypeConfig.slot_id == slot_id)
-    rows = query.all()
+    rows = query.order_by(GameTypeConfig.display_order, GameTypeConfig.id).all()
     return [_config_out(c, code) for c, code in rows]
 
 
@@ -63,7 +63,7 @@ async def create_config(
         enabled=payload.enabled, min_credits=payload.min_credits, max_credits=payload.max_credits,
         bulk_enabled=payload.bulk_enabled, max_bulk_selections=payload.max_bulk_selections,
         same_amount_allowed=payload.same_amount_allowed, individual_amount_allowed=payload.individual_amount_allowed,
-        duplicate_selection_allowed=payload.duplicate_selection_allowed,
+        duplicate_selection_allowed=payload.duplicate_selection_allowed, display_order=payload.display_order,
     )
     db.add(config)
     db.flush()

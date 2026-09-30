@@ -17,6 +17,7 @@ class GameTypeConfigCreate(BaseModel):
     same_amount_allowed: bool = True
     individual_amount_allowed: bool = True
     duplicate_selection_allowed: bool = False
+    display_order: int = 0
 
 
 class GameTypeConfigUpdate(BaseModel):
@@ -28,6 +29,7 @@ class GameTypeConfigUpdate(BaseModel):
     same_amount_allowed: bool | None = None
     individual_amount_allowed: bool | None = None
     duplicate_selection_allowed: bool | None = None
+    display_order: int | None = None
 
 
 class GameTypeConfigOut(BaseModel):
@@ -45,3 +47,4 @@ class GameTypeConfigOut(BaseModel):
     same_amount_allowed: bool
     individual_amount_allowed: bool
     duplicate_selection_allowed: bool
+    display_order: int

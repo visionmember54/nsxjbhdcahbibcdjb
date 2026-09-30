@@ -158,6 +158,7 @@ export interface GameTypeConfig {
   same_amount_allowed: boolean;
   individual_amount_allowed: boolean;
   duplicate_selection_allowed: boolean;
+  display_order: number;
 }
 
 export interface Rate {

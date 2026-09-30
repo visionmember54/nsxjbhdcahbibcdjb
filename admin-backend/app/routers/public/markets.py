@@ -71,14 +71,14 @@ async def get_market_games(market_id: int, slot_id: int | None = None, db: Sessi
         .filter(GameTypeConfig.market_id == market_id, GameTypeConfig.enabled.is_(True), GameType.is_active.is_(True))
     )
     query = query.filter(GameTypeConfig.slot_id == slot_id) if slot_id is not None else query.filter(GameTypeConfig.slot_id.is_(None))
-    rows = query.all()
+    rows = query.order_by(GameTypeConfig.display_order, GameTypeConfig.id).all()
     return [
         GameTypeConfigOut(
             id=c.id, market_id=c.market_id, slot_id=c.slot_id, game_type_id=c.game_type_id, game_type_code=code,
             stage=c.stage, enabled=c.enabled, min_credits=c.min_credits, max_credits=c.max_credits,
             bulk_enabled=c.bulk_enabled, max_bulk_selections=c.max_bulk_selections,
             same_amount_allowed=c.same_amount_allowed, individual_amount_allowed=c.individual_amount_allowed,
-            duplicate_selection_allowed=c.duplicate_selection_allowed,
+            duplicate_selection_allowed=c.duplicate_selection_allowed, display_order=c.display_order,
         )
         for c, code in rows
     ]

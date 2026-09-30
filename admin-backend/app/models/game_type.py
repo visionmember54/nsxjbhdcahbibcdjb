@@ -46,3 +46,6 @@ class GameTypeConfig(Base):
     same_amount_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
     individual_amount_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
     duplicate_selection_allowed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Admin-controlled position of this game type within its market/slot's game list --
+    # independent of GameType.display_order, which is global across every market.
+    display_order: Mapped[int] = mapped_column(Integer, default=0)

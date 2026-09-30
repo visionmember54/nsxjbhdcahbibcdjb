@@ -477,6 +477,7 @@ def market_game_modes(market_id: int, slot_id: int | None = None, db: Session = 
             GameTypeConfig.enabled.is_(True),
             GameType.is_active.is_(True),
         )
+        .order_by(GameTypeConfig.display_order, GameTypeConfig.id)
         .all()
     )
 
@@ -484,7 +485,9 @@ def market_game_modes(market_id: int, slot_id: int | None = None, db: Session = 
     # but this summary doesn't distinguish stages -- that's chosen later via
     # the bet's own `session` field. Dedupe by slug so SINGLE DIGIT etc.
     # doesn't appear twice; the rate is identical across stages regardless
-    # (Rate has no stage column), so no information is lost.
+    # (Rate has no stage column), so no information is lost. Sorted by
+    # display_order above -- dict insertion order carries that into the
+    # returned gameModes list, giving admin control over the app's game order.
     modes_by_slug: dict[str, dict] = {}
     for config in configs:
         game_type = db.get(GameType, config.game_type_id)

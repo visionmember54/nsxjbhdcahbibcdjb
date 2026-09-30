@@ -37,6 +37,7 @@ export default function GameTypeConfigsPanel({ marketId, slotId }: { marketId: n
         <Table>
           <THead>
             <Tr>
+              <Th>Order</Th>
               <Th>Type</Th>
               <Th>Stage</Th>
               <Th>Enabled</Th>
@@ -46,24 +47,27 @@ export default function GameTypeConfigsPanel({ marketId, slotId }: { marketId: n
             </Tr>
           </THead>
           <TBody>
-            {configs.map((c) => (
-              <Tr key={c.id}>
-                <Td className="font-medium text-slate-900">{c.game_type_code}</Td>
-                <Td>{c.stage ?? '—'}</Td>
-                <Td>
-                  <Badge tone={c.enabled ? 'green' : 'slate'}>{c.enabled ? 'Enabled' : 'Disabled'}</Badge>
-                </Td>
-                <Td>
-                  {c.min_credits}–{c.max_credits}
-                </Td>
-                <Td>{c.bulk_enabled ? `up to ${c.max_bulk_selections}` : 'off'}</Td>
-                <Td>
-                  <button className="text-xs font-semibold text-brand-600 hover:underline" onClick={() => setEditing(c)}>
-                    Edit
-                  </button>
-                </Td>
-              </Tr>
-            ))}
+            {[...configs]
+              .sort((a, b) => a.display_order - b.display_order || a.id - b.id)
+              .map((c) => (
+                <Tr key={c.id}>
+                  <Td className="text-slate-500">{c.display_order}</Td>
+                  <Td className="font-medium text-slate-900">{c.game_type_code}</Td>
+                  <Td>{c.stage ?? '—'}</Td>
+                  <Td>
+                    <Badge tone={c.enabled ? 'green' : 'slate'}>{c.enabled ? 'Enabled' : 'Disabled'}</Badge>
+                  </Td>
+                  <Td>
+                    {c.min_credits}–{c.max_credits}
+                  </Td>
+                  <Td>{c.bulk_enabled ? `up to ${c.max_bulk_selections}` : 'off'}</Td>
+                  <Td>
+                    <button className="text-xs font-semibold text-brand-600 hover:underline" onClick={() => setEditing(c)}>
+                      Edit
+                    </button>
+                  </Td>
+                </Tr>
+              ))}
           </TBody>
         </Table>
       )}
@@ -164,6 +168,7 @@ function EditConfigForm({
   const [sameAmount, setSameAmount] = useState(config.same_amount_allowed);
   const [individualAmount, setIndividualAmount] = useState(config.individual_amount_allowed);
   const [duplicates, setDuplicates] = useState(config.duplicate_selection_allowed);
+  const [displayOrder, setDisplayOrder] = useState(config.display_order);
 
   return (
     <form
@@ -178,11 +183,15 @@ function EditConfigForm({
           same_amount_allowed: sameAmount,
           individual_amount_allowed: individualAmount,
           duplicate_selection_allowed: duplicates,
+          display_order: displayOrder,
         });
       }}
     >
       <FormField label="">
         <Checkbox label="Enabled" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+      </FormField>
+      <FormField label="Display order (lower shows first in the app)">
+        <Input type="number" value={displayOrder} onChange={(e) => setDisplayOrder(Number(e.target.value))} />
       </FormField>
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Min credits">
