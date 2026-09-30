@@ -151,7 +151,7 @@ def market_session_status(db: Session, market: Market) -> tuple[str, bool, bool,
     result = declared_result_today(db, market)
     open_declared = bool(result and result.open_panna)
     close_declared = bool(result and result.close_panna)
-    cutoff = market.cutoff_time or market.closing_time
+    cutoff = market.cutoff_time or market.opening_time
     closing = market.closing_time
 
     if not open_declared and (not cutoff or now < cutoff):

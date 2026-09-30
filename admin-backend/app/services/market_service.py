@@ -150,12 +150,15 @@ def assert_market_open(db: Session, market: Market, stage: str | None = None) ->
             raise AppError(CUTOFF_PASSED, f"Market '{market.name}' cutoff has passed")
         return
 
-    # Open-session bets (and jodi/sangam, which need the open result): stop the instant
-    # today's Open number is declared -- automatic, independent of any admin-entered
-    # cutoff_time -- or at cutoff_time/closing_time if one is set, whichever is first.
+    # Open-session bets (and jodi/sangam, which need the open result): stop at the
+    # market's own Open time -- automatic, no per-market schedule config needed --
+    # or at an explicit cutoff_time if the admin has set one to override it. Also
+    # stops the instant today's Open number is declared, in case that happens
+    # early, but the clock deadline below is what fires on a normal day even if
+    # nobody has declared anything yet.
     if result and result.open_panna:
         raise AppError(CUTOFF_PASSED, f"Market '{market.name}' Open result has already been declared for today")
-    if _cutoff_passed(market.cutoff_time or market.closing_time, market.timezone):
+    if _cutoff_passed(market.cutoff_time or market.opening_time, market.timezone):
         raise AppError(CUTOFF_PASSED, f"Market '{market.name}' cutoff has passed")
 
 

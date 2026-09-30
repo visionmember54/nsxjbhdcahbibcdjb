@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 
@@ -72,6 +72,49 @@ def test_close_bet_blocked_once_close_result_declared(client, auth_headers, user
 
 def test_open_bet_allowed_before_any_result_declared(client, auth_headers, user_headers):
     mid = _market_id(client, auth_headers)
+    resp = client.post(
+        "/simulations", headers=user_headers,
+        json={"market_id": mid, "game_type": "SINGLE", "stage": "OPEN", "value": "5", "credits": 10},
+    )
+    assert resp.status_code == 201
+
+
+def test_open_bet_blocked_once_open_time_passes_even_with_no_result_declared(client, auth_headers, user_headers):
+    """The clock cutoff must fire on its own -- nobody has to declare anything."""
+    mid = _market_id(client, auth_headers)
+    past = (datetime.now(ZoneInfo("Asia/Kolkata")) - timedelta(minutes=1)).time().isoformat()
+    resp = client.patch(f"/admin/markets/{mid}", headers=auth_headers, json={"opening_time": past})
+    assert resp.status_code == 200, resp.text
+
+    resp = client.post(
+        "/simulations", headers=user_headers,
+        json={"market_id": mid, "game_type": "SINGLE", "stage": "OPEN", "value": "5", "credits": 10},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "CUTOFF_PASSED"
+
+
+def test_close_bet_still_allowed_after_open_time_passes_but_before_close_time(client, auth_headers, user_headers):
+    """Open's clock cutoff passing must not touch the still-pending Close leg."""
+    mid = _market_id(client, auth_headers)
+    past = (datetime.now(ZoneInfo("Asia/Kolkata")) - timedelta(minutes=1)).time().isoformat()
+    future = (datetime.now(ZoneInfo("Asia/Kolkata")) + timedelta(hours=1)).time().isoformat()
+    resp = client.patch(f"/admin/markets/{mid}", headers=auth_headers, json={"opening_time": past, "closing_time": future})
+    assert resp.status_code == 200, resp.text
+
+    resp = client.post(
+        "/simulations", headers=user_headers,
+        json={"market_id": mid, "game_type": "SINGLE", "stage": "CLOSE", "value": "5", "credits": 10},
+    )
+    assert resp.status_code == 201
+
+
+def test_open_bet_allowed_before_open_time_passes(client, auth_headers, user_headers):
+    mid = _market_id(client, auth_headers)
+    future = (datetime.now(ZoneInfo("Asia/Kolkata")) + timedelta(hours=1)).time().isoformat()
+    resp = client.patch(f"/admin/markets/{mid}", headers=auth_headers, json={"opening_time": future})
+    assert resp.status_code == 200, resp.text
+
     resp = client.post(
         "/simulations", headers=user_headers,
         json={"market_id": mid, "game_type": "SINGLE", "stage": "OPEN", "value": "5", "credits": 10},
