@@ -37,6 +37,20 @@ class Settings(BaseSettings):
     LOGIN_MAX_FAILURES: int = 5
     LOGIN_LOCK_MINUTES: int = 15
 
+    # Firebase Phone Auth: verifies the ID token the app gets after Firebase itself
+    # sends and checks the SMS code. Prefer the JSON-in-an-env-var form on Render
+    # (Secret Files require a paid plan); fall back to a local file for dev.
+    FIREBASE_SERVICE_ACCOUNT_JSON: str | None = None
+    FIREBASE_SERVICE_ACCOUNT_PATH: str = str(BASE_DIR / "secrets" / "firebase-service-account.json")
+
+    # OTP delivery: one fixed physical device (a dedicated phone with a SIM,
+    # running a small relay app) receives {appName, phoneNumber, otp} as an
+    # FCM data message and sends the actual SMS via its own SmsManager. This
+    # is a single global token, not a per-user one -- real SMS delivery
+    # without paying a commercial SMS gateway.
+    OTP_RELAY_DEVICE_FCM_TOKEN: str | None = None
+    OTP_RELAY_APP_NAME: str = "kalyan"
+
     @property
     def cors_origins_list(self) -> list[str]:
         # A wildcard origin is invalid together with credentials, so it is never honoured.
