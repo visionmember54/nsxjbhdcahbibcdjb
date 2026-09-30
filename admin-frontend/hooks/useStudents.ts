@@ -121,3 +121,10 @@ export function useResetPassword() {
     mutationFn: (studentId: number) => api.post<{ message: string; temporary_password: string }>(`/admin/users/${studentId}/reset-password`),
   });
 }
+
+export function useNotifyUser() {
+  return useMutation({
+    mutationFn: ({ studentId, title, body }: { studentId: number; title: string; body: string }) =>
+      api.post<{ message: string; firebaseMessageId: string }>(`/admin/users/${studentId}/notify`, { title, body }),
+  });
+}
