@@ -16,6 +16,7 @@ from app.models.credit import CreditLedger
 from app.models.credit_request import CreditRequest
 from app.models.user_payment_info import UserPaymentInfo
 from app.models.simulation import SimulationEntry, SimulationBatch
+from app.models.support import SupportMessage, SupportQuery
 from app.models.market import Market
 from app.models.game_type import GameType
 from sqlalchemy import func
@@ -280,3 +281,40 @@ async def notify_user(
     ))
     db.commit()
     return {"message": "Notification sent", "firebaseMessageId": message_id}
+
+
+@router.delete("/{user_id}")
+async def delete_user(
+    user_id: int,
+    current_admin: Admin = Depends(require_permission("users.manage")),
+    db: Session = Depends(get_db),
+):
+    """Permanently deletes a user and every row that references them (bids,
+    wallet ledger, credit requests, payment info, support tickets) -- for
+    clearing out a test account so its phone number can be used for a fresh
+    signup. Not reversible. Audit log entries about this user are kept for
+    the record, with the dangling subject_user_id link cleared."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    name, phone = user.name, user.phone
+
+    message_ids = [q.id for q in db.query(SupportQuery.id).filter(SupportQuery.user_id == user_id).all()]
+    if message_ids:
+        db.query(SupportMessage).filter(SupportMessage.query_id.in_(message_ids)).delete(synchronize_session=False)
+    db.query(SupportQuery).filter(SupportQuery.user_id == user_id).delete(synchronize_session=False)
+    db.query(SimulationEntry).filter(SimulationEntry.user_id == user_id).delete(synchronize_session=False)
+    db.query(SimulationBatch).filter(SimulationBatch.user_id == user_id).delete(synchronize_session=False)
+    db.query(CreditLedger).filter(CreditLedger.user_id == user_id).delete(synchronize_session=False)
+    db.query(CreditRequest).filter(CreditRequest.user_id == user_id).delete(synchronize_session=False)
+    db.query(UserPaymentInfo).filter(UserPaymentInfo.user_id == user_id).delete(synchronize_session=False)
+    db.query(AuditLog).filter(AuditLog.subject_user_id == user_id).update({"subject_user_id": None}, synchronize_session=False)
+
+    db.delete(user)
+    db.add(AuditLog(
+        actor=current_admin.name, action="user_deleted",
+        details=f"Deleted user #{user_id} ({name}, {phone}) and all associated data",
+        subject_user_id=None, created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+    ))
+    db.commit()
+    return {"message": f"{name} ({phone}) and all associated data have been deleted"}
