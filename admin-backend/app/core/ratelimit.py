@@ -61,9 +61,9 @@ def clear_login_failures(account: str) -> None:
 # a login attempt, there's a real cost (and carrier spam-flagging risk) to letting
 # this run unbounded. Enforces the cooldown the response already advertises, plus
 # a per-number and per-IP cap over a longer window.
-OTP_RESEND_COOLDOWN_SECONDS = 60
-OTP_MAX_PER_NUMBER_WINDOW = 5
-OTP_MAX_PER_IP_WINDOW = 20
+OTP_RESEND_COOLDOWN_SECONDS = 20
+OTP_MAX_PER_NUMBER_WINDOW = 10
+OTP_MAX_PER_IP_WINDOW = 50
 OTP_WINDOW_SECONDS = 30 * 60
 
 
