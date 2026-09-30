@@ -11,7 +11,7 @@ from datetime import date, datetime, time as time_, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
-from app.services.market_service import effective_market_status
+from app.services.market_service import declared_result_today, effective_market_status
 
 from app.models.game_type import GameType
 from app.models.market import Market, StarlineSlot
@@ -135,8 +135,12 @@ def latest_published_result(db: Session, market_id: int, slot_id: int | None = N
     return query.order_by(MarketResult.result_date.desc(), MarketResult.id.desc()).first()
 
 
-def market_session_status(market: Market) -> tuple[str, bool, bool, bool]:
-    """-> (sessionStatus, isOpeningLive, isClosingLive, isBiddingAllowed)."""
+def market_session_status(db: Session, market: Market) -> tuple[str, bool, bool, bool]:
+    """-> (sessionStatus, isOpeningLive, isClosingLive, isBiddingAllowed).
+
+    Mirrors market_service.assert_market_open exactly, so the app's displayed
+    Open/Close session badge never shows a session as biddable when the
+    backend would actually reject a bet placed against it."""
     status = effective_market_status(market)
     if status == "UPCOMING":
         return "UPCOMING", False, False, False
@@ -144,15 +148,15 @@ def market_session_status(market: Market) -> tuple[str, bool, bool, bool]:
         return "CLOSED_TODAY", False, False, False
 
     now = datetime.now(ZoneInfo(market.timezone or "Asia/Kolkata")).time()
-
-
-    now = datetime.now(ZoneInfo(market.timezone or "Asia/Kolkata")).time()
+    result = declared_result_today(db, market)
+    open_declared = bool(result and result.open_panna)
+    close_declared = bool(result and result.close_panna)
     cutoff = market.cutoff_time or market.closing_time
     closing = market.closing_time
 
-    if cutoff and now < cutoff:
+    if not open_declared and (not cutoff or now < cutoff):
         return "OPENING", True, False, True
-    if closing and now < closing:
+    if not close_declared and closing and now < closing:
         return "CLOSING", False, True, True
     return "CLOSED_TODAY", False, False, False
 

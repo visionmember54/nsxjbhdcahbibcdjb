@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import CUTOFF_PASSED, MARKET_CLOSED, SLOT_CLOSED, AppError
 from app.models.market import Market, StarlineSlot
+from app.models.market_result import MarketResult
 
 # Market status state machine
 VALID_TRANSITIONS: dict[str, set[str]] = {
@@ -116,13 +117,45 @@ def effective_market_status(market: Market) -> str:
     return "OPEN"
 
 
-def assert_market_open(market: Market, stage: str | None = None) -> None:
+def declared_result_today(db: Session, market: Market) -> MarketResult | None:
+    """Today's Published/Corrected result row for this market (Matka-shaped, no
+    slot), if one exists yet. Used to auto-close a session the instant its
+    number is declared, with no per-market schedule config required."""
+    today = datetime.now(ZoneInfo(market.timezone or "Asia/Kolkata")).date().isoformat()
+    return (
+        db.query(MarketResult)
+        .filter(
+            MarketResult.market_id == market.id,
+            MarketResult.slot_id.is_(None),
+            MarketResult.result_date == today,
+            MarketResult.status.in_(("Published", "Corrected")),
+        )
+        .order_by(MarketResult.id.desc())
+        .first()
+    )
+
+
+def assert_market_open(db: Session, market: Market, stage: str | None = None) -> None:
     if effective_market_status(market) != "OPEN":
         raise AppError(MARKET_CLOSED, f"Market '{market.name}' is not open")
-    # Open-session bets (and jodi/sangam, which need the open result) stop at the cutoff; close-session
-    # bets stay open until the market closes.
-    deadline = market.closing_time if stage == "CLOSE" and market.closing_time else (market.cutoff_time or market.closing_time)
-    if _cutoff_passed(deadline, market.timezone):
+
+    result = declared_result_today(db, market)
+
+    if stage == "CLOSE":
+        # Close-session bets stop the instant today's Close number is declared, or at
+        # closing_time, whichever comes first.
+        if result and result.close_panna:
+            raise AppError(CUTOFF_PASSED, f"Market '{market.name}' Close result has already been declared for today")
+        if _cutoff_passed(market.closing_time, market.timezone):
+            raise AppError(CUTOFF_PASSED, f"Market '{market.name}' cutoff has passed")
+        return
+
+    # Open-session bets (and jodi/sangam, which need the open result): stop the instant
+    # today's Open number is declared -- automatic, independent of any admin-entered
+    # cutoff_time -- or at cutoff_time/closing_time if one is set, whichever is first.
+    if result and result.open_panna:
+        raise AppError(CUTOFF_PASSED, f"Market '{market.name}' Open result has already been declared for today")
+    if _cutoff_passed(market.cutoff_time or market.closing_time, market.timezone):
         raise AppError(CUTOFF_PASSED, f"Market '{market.name}' cutoff has passed")
 
 

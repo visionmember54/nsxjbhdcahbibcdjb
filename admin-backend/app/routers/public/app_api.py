@@ -328,7 +328,7 @@ def home_dashboard(
 
     items = []
     for market, category_slug in rows:
-        session_status, is_opening, is_closing, is_bidding = shape.market_session_status(market)
+        session_status, is_opening, is_closing, is_bidding = shape.market_session_status(db, market)
         if filter == "LIVE" and session_status not in ("OPENING", "CLOSING"):
             continue
         if filter == "UPCOMING" and session_status != "UPCOMING":
@@ -445,7 +445,7 @@ def markets_live_results(db: Session = Depends(get_db)):
     out = []
     for market in markets:
         result = shape.latest_published_result(db, market.id)
-        session_status, is_opening, is_closing, is_bidding = shape.market_session_status(market)
+        session_status, is_opening, is_closing, is_bidding = shape.market_session_status(db, market)
         out.append(
             {
                 "id": str(market.id),
@@ -465,7 +465,7 @@ def market_game_modes(market_id: int, slot_id: int | None = None, db: Session = 
     if not market:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Market not found")
 
-    session_status, is_opening, is_closing, is_bidding = shape.market_session_status(market)
+    session_status, is_opening, is_closing, is_bidding = shape.market_session_status(db, market)
     current_session = "OPEN" if is_opening else ("CLOSE" if is_closing else session_status)
 
     configs = (
@@ -705,7 +705,7 @@ def gali_desawar_markets(db: Session = Depends(get_db)):
     for market in markets:
         result = shape.latest_published_result(db, market.id)
         result_str = (result.single_result or result.open_ank or "**") if result else "**"
-        _, _, _, is_bidding = shape.market_session_status(market)
+        _, _, _, is_bidding = shape.market_session_status(db, market)
         out.append(
             {
                 "id": str(market.id),
