@@ -19,7 +19,7 @@ export function useCreateStudent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: { name: string; phone: string; email?: string; password?: string }) =>
-      api.post<Student>('/admin/users', payload),
+      api.post<Student & { temporary_password?: string | null }>('/admin/users', payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['students'] }),
   });
 }
