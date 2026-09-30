@@ -1,41 +1,31 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import PageHeader from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Table, TBody, Td, Th, THead, Tr } from '@/components/ui/Table';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States';
 import { StatusBadge } from '@/components/ui/Badge';
-import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import Pagination from '@/components/ui/Pagination';
 import { Input, Select } from '@/components/ui/Field';
-import { useStudents, useUpdateStudent } from '@/hooks/useStudents';
+import { useStudents, useUpdateStudent, useDeleteStudent } from '@/hooks/useStudents';
 import CreateStudentModal from '@/components/students/CreateStudentModal';
+import Modal from '@/components/ui/Modal';
+import { Student } from '@/lib/api/types';
 
 export default function StudentsPage() {
-  return (
-    <Suspense fallback={<LoadingState />}>
-      <StudentsPageInner />
-    </Suspense>
-  );
-}
-
-function StudentsPageInner() {
-  const searchParams = useSearchParams();
   const [offset, setOffset] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
+  const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+  const [phoneConfirmation, setPhoneConfirmation] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'disabled' | ''>('');
-  const joinedToday = searchParams.get('joinedToday') === '1';
-  const activeToday = searchParams.get('activeToday') === '1';
   const limit = 20;
-  const { data, isLoading, isError, error } = useStudents({
-    limit, offset, search, status: statusFilter || undefined, joinedToday, activeToday,
-  });
+  const { data, isLoading, isError, error } = useStudents({ limit, offset, search, status: statusFilter || undefined });
   const updateStudent = useUpdateStudent();
+  const deleteStudent = useDeleteStudent();
 
   return (
     <div>
@@ -45,15 +35,6 @@ function StudentsPageInner() {
         description="Manage user accounts, access status, and virtual-credit balances."
         action={<Button onClick={() => setCreateOpen(true)}>+ New user</Button>}
       />
-      {(joinedToday || activeToday) && (
-        <div className="mb-4">
-          <Link href="/dashboard/students">
-            <Badge tone="blue">
-              {joinedToday ? 'Signed up today' : 'Active today'} — click to clear filter ✕
-            </Badge>
-          </Link>
-        </div>
-      )}
       <Card>
         <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-2">
           <Input placeholder="Search name, phone, or email" value={search} onChange={(e) => { setSearch(e.target.value); setOffset(0); }} />
@@ -99,6 +80,12 @@ function StudentsPageInner() {
                     >
                       {s.status === 'active' ? 'Disable' : 'Enable'}
                     </button>
+                    <button
+                      className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50"
+                      onClick={() => { setStudentToDelete(s); setPhoneConfirmation(''); deleteStudent.reset(); }}
+                    >
+                      Delete
+                    </button>
                   </Td>
                 </Tr>
               ))}
@@ -109,6 +96,41 @@ function StudentsPageInner() {
       </Card>
 
       <CreateStudentModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <Modal
+        open={!!studentToDelete}
+        onClose={() => { if (!deleteStudent.isPending) setStudentToDelete(null); }}
+        title="Permanently delete user?"
+      >
+        {studentToDelete && (
+          <div>
+            <p className="mb-3 text-sm text-slate-700">
+              This permanently deletes <strong>{studentToDelete.name}</strong> and their account history, including bids,
+              credit ledger entries, requests, payment details, and support tickets. This cannot be undone.
+            </p>
+            <p className="mb-2 text-xs text-slate-500">Enter the user’s phone number ({studentToDelete.phone}) to confirm.</p>
+            <Input value={phoneConfirmation} onChange={(e) => setPhoneConfirmation(e.target.value)} autoComplete="off" />
+            {deleteStudent.isError && <p className="mt-2 text-sm text-red-600">{(deleteStudent.error as Error).message}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setStudentToDelete(null)} disabled={deleteStudent.isPending}>Cancel</Button>
+              <Button
+                variant="danger"
+                loading={deleteStudent.isPending}
+                disabled={phoneConfirmation.trim() !== studentToDelete.phone}
+                onClick={async () => {
+                  try {
+                    await deleteStudent.mutateAsync(studentToDelete.id);
+                    setStudentToDelete(null);
+                  } catch {
+                    // The mutation error is shown in the dialog.
+                  }
+                }}
+              >
+                Delete user permanently
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
