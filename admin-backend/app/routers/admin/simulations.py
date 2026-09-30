@@ -10,7 +10,7 @@ from app.core.deps import get_current_admin, get_db, require_permission
 from app.core.errors import UNAUTHORIZED_OVERRIDE
 from app.models.admin import Admin
 from app.models.game_type import GameType
-from app.models.market import Market
+from app.models.market import Market, MarketCategory
 from app.models.simulation import SimulationEntry
 from app.models.user import User
 from app.schemas.common import Page, PageParams
@@ -65,10 +65,13 @@ def _paana_digit_columns(game_type_code: str, stage: str | None, selection: str,
     return columns
 
 
-def _entry_out(entry: SimulationEntry, code: str, user_name: str | None = None, market_name: str | None = None) -> SimulationEntryOut:
+def _entry_out(
+    entry: SimulationEntry, code: str, user_name: str | None = None, market_name: str | None = None,
+    market_category: str | None = None,
+) -> SimulationEntryOut:
     return SimulationEntryOut(
         id=entry.id, batchId=entry.batch_id, userId=entry.user_id, userName=user_name, marketId=entry.market_id,
-        marketName=market_name, slotId=entry.slot_id, gameType=code, stage=entry.stage, selection=entry.selection,
+        marketName=market_name, marketCategory=market_category, slotId=entry.slot_id, gameType=code, stage=entry.stage, selection=entry.selection,
         gameVariant=entry.game_variant, **_paana_digit_columns(code, entry.stage, entry.selection, entry.game_variant),
         simulatedCredits=entry.simulated_credits, simulatedRate=entry.simulated_rate,
         simulatedReturn=entry.simulated_return, status=entry.status, createdAt=entry.created_at,
@@ -93,14 +96,18 @@ async def list_simulations(
     game_type: str | None = None,
     status_filter: str | None = None,
     date: date_type | None = None,
+    category: str | None = None,
     current_admin: Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
+    """`category` (MATKA/STARLINE/GALI_DISAWAR/CUSTOM) keeps each market type's
+    bid history a genuinely separate view instead of one combined list."""
     query = (
-        db.query(SimulationEntry, GameType.code, User.name, Market.name)
+        db.query(SimulationEntry, GameType.code, User.name, Market.name, MarketCategory.slug)
         .join(GameType, GameType.id == SimulationEntry.game_type_id)
         .join(User, User.id == SimulationEntry.user_id)
         .join(Market, Market.id == SimulationEntry.market_id)
+        .join(MarketCategory, MarketCategory.id == Market.category_id)
     )
     if user_id is not None:
         query = query.filter(SimulationEntry.user_id == user_id)
@@ -113,9 +120,14 @@ async def list_simulations(
     if date is not None:
         start, end = ist_day_bounds(date)
         query = query.filter(SimulationEntry.created_at >= start, SimulationEntry.created_at < end)
+    if category:
+        query = query.filter(MarketCategory.slug == category.strip().upper())
     total = query.count()
     rows = query.order_by(SimulationEntry.id.desc()).limit(pagination.limit).offset(pagination.offset).all()
-    items = [_entry_out(e, code, user_name, market_name) for e, code, user_name, market_name in rows]
+    items = [
+        _entry_out(e, code, user_name, market_name, category_slug)
+        for e, code, user_name, market_name, category_slug in rows
+    ]
     return Page(items=items, total=total, limit=pagination.limit, offset=pagination.offset)
 
 

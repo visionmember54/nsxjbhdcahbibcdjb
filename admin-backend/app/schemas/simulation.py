@@ -57,6 +57,7 @@ class SimulationEntryOut(BaseModel):
     userName: str | None = None
     marketId: int
     marketName: str | None = None
+    marketCategory: str | None = None
     slotId: int | None
     gameType: str
     stage: str | None

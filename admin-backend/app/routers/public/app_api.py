@@ -1165,6 +1165,30 @@ def list_my_credit_requests(current_user: User = Depends(get_current_user), db: 
 
 # --- Support ------------------------------------------------------------
 
+def _support_thread_payload(db: Session, query: SupportQuery) -> dict:
+    messages = db.query(SupportMessage).filter(SupportMessage.query_id == query.id).order_by(SupportMessage.id.asc()).all()
+    return {
+        "sessionId": str(query.id),
+        "status": query.status,
+        "messages": [{"id": m.id, "sender": m.sender, "text": m.text, "time": m.time} for m in messages],
+    }
+
+
+@router.get("/support/chat")
+def get_support_chat(sessionId: str | None = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Polled by the app to pick up admin replies -- POST alone only ever saw the
+    user's own message land; this is how an admin's asynchronous reply actually
+    reaches the user's screen."""
+    query: SupportQuery | None = None
+    if sessionId:
+        query = db.query(SupportQuery).filter(SupportQuery.id == int(sessionId), SupportQuery.user_id == current_user.id).first()
+    else:
+        query = db.query(SupportQuery).filter(SupportQuery.user_id == current_user.id).order_by(SupportQuery.id.desc()).first()
+    if not query:
+        return _ok({"sessionId": None, "status": None, "messages": []})
+    return _ok(_support_thread_payload(db, query))
+
+
 @router.post("/support/chat")
 def support_chat(payload: SupportChatRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     query: SupportQuery | None = None
@@ -1183,14 +1207,9 @@ def support_chat(payload: SupportChatRequest, current_user: User = Depends(get_c
     db.add(SupportMessage(query_id=query.id, sender="user", text=payload.message, time=now.strftime("%H:%M %p")))
     query.updated_at = now.strftime("%Y-%m-%d %H:%M:%S")
     db.commit()
+    db.refresh(query)
 
-    return _ok(
-        {
-            "sessionId": str(query.id),
-            "sender": "BOT",
-            "reply": "Thanks for reaching out — our support team will get back to you shortly.",
-            "quickReplies": [],
-            "actionLink": "",
-            "timestamp": now.isoformat(),
-        }
-    )
+    # Return the real, current thread (not a canned bot line) so the sender's own
+    # screen reflects the true state immediately, and any admin reply already
+    # sitting in the thread from before is visible right away too.
+    return _ok(_support_thread_payload(db, query))

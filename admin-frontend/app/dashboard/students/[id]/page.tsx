@@ -18,7 +18,8 @@ import {
   useUserTransactions,
   useUserWinnings,
   useResetPassword,
-  useNotifyUser
+  useNotifyUser,
+  useUpdateStudent
 } from '@/hooks/useStudents';
 import Button from '@/components/ui/Button';
 import { FormField, Input, Textarea } from '@/components/ui/Field';
@@ -37,6 +38,7 @@ export default function StudentDetailPage() {
   const winnings = useUserWinnings(studentId);
   const resetPassword = useResetPassword();
   const notifyUser = useNotifyUser();
+  const updateStudent = useUpdateStudent();
 
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [notifyTitle, setNotifyTitle] = useState('');
@@ -51,6 +53,12 @@ export default function StudentDetailPage() {
     resetPassword.mutate(studentId, {
       onSuccess: (res) => setTempPassword(res.temporary_password),
     });
+  };
+
+  const handleToggleStatus = () => {
+    const nextStatus = user.status === 'active' ? 'disabled' : 'active';
+    const reason = window.prompt(`Optional reason for ${user.status === 'active' ? 'disabling' : 'enabling'} this user:`);
+    updateStudent.mutate({ id: user.id, status: nextStatus, reason: reason || undefined });
   };
 
   const handleSendNotification = () => {
@@ -74,10 +82,23 @@ export default function StudentDetailPage() {
       <CardHeader><CardTitle>User Details</CardTitle></CardHeader>
       <CardBody>
         <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4 lg:grid-cols-5">
+          <div><p className="text-xs text-slate-500">User ID</p><p className="font-mono font-semibold">#{user.id}</p></div>
           <div><p className="text-xs text-slate-500">Name</p><p className="font-semibold">{user.name}</p></div>
           <div><p className="text-xs text-slate-500">Phone</p><p>{user.phone}</p></div>
           <div><p className="text-xs text-slate-500">Email</p><p>{user.email || '—'}</p></div>
-          <div><p className="text-xs text-slate-500">Status</p><StatusBadge status={user.status} /></div>
+          <div>
+            <p className="text-xs text-slate-500">Status</p>
+            <div className="flex items-center gap-2">
+              <StatusBadge status={user.status} />
+              <button
+                className="text-xs font-semibold text-brand-600 hover:underline disabled:opacity-50"
+                onClick={handleToggleStatus}
+                disabled={updateStudent.isPending}
+              >
+                {user.status === 'active' ? 'Disable' : 'Enable'}
+              </button>
+            </div>
+          </div>
           <div><p className="text-xs text-slate-500">ID Creation Date</p><p>{new Date(user.created_at).toLocaleDateString()}</p></div>
           <div><p className="text-xs text-slate-500">Last Seen</p><p>{user.last_seen ? new Date(user.last_seen).toLocaleString() : 'Never'}</p></div>
           <div>
@@ -88,6 +109,7 @@ export default function StudentDetailPage() {
             {tempPassword && <div className="mt-2"><TempPassword password={tempPassword} /></div>}
           </div>
         </div>
+        {updateStudent.isError && <p className="mt-2 text-xs text-red-600">{(updateStudent.error as Error).message}</p>}
       </CardBody>
     </Card>
 
@@ -155,10 +177,11 @@ export default function StudentDetailPage() {
       <CardBody>
         {withdrawals.isLoading ? <LoadingState /> : withdrawals.data?.length ? (
           <Table>
-            <THead><Tr><Th>Date</Th><Th>Amount</Th><Th>Status</Th></Tr></THead>
+            <THead><Tr><Th>ID</Th><Th>Date</Th><Th>Amount</Th><Th>Status</Th></Tr></THead>
             <TBody>
               {withdrawals.data.map(w => (
                 <Tr key={w.id}>
+                  <Td className="font-mono text-xs text-slate-500">#{w.id}</Td>
                   <Td>{new Date(w.created_at).toLocaleString()}</Td>
                   <Td>{w.requested_amount}</Td>
                   <Td><StatusBadge status={w.status} /></Td>
@@ -175,10 +198,11 @@ export default function StudentDetailPage() {
       <CardBody>
         {bids.isLoading ? <LoadingState /> : bids.data?.length ? (
           <Table>
-            <THead><Tr><Th>Date</Th><Th>Game</Th><Th>Type</Th><Th>Session</Th><Th>Selection</Th><Th>Points</Th><Th>Status</Th></Tr></THead>
+            <THead><Tr><Th>Bid ID</Th><Th>Date</Th><Th>Game</Th><Th>Type</Th><Th>Session</Th><Th>Selection</Th><Th>Points</Th><Th>Status</Th></Tr></THead>
             <TBody>
               {bids.data.map(b => (
                 <Tr key={b.id}>
+                  <Td className="font-mono text-xs text-slate-500">#{b.id}</Td>
                   <Td>{new Date(b.created_at).toLocaleString()}</Td>
                   <Td>{b.game_name}</Td>
                   <Td>{b.game_type}</Td>
@@ -199,10 +223,11 @@ export default function StudentDetailPage() {
       <CardBody>
         {transactions.isLoading ? <LoadingState /> : transactions.data?.length ? (
           <Table>
-            <THead><Tr><Th>Date</Th><Th>Type</Th><Th>Amount</Th><Th>Balance After</Th><Th>Note</Th></Tr></THead>
+            <THead><Tr><Th>TX ID</Th><Th>Date</Th><Th>Type</Th><Th>Amount</Th><Th>Balance After</Th><Th>Note</Th></Tr></THead>
             <TBody>
               {transactions.data.map(t => (
                 <Tr key={t.id}>
+                  <Td className="font-mono text-xs text-slate-500">#{t.id}</Td>
                   <Td>{new Date(t.created_at).toLocaleString()}</Td>
                   <Td>{t.type}</Td>
                   <Td className={t.amount >= 0 ? 'text-emerald-600' : 'text-red-600'}>{t.amount}</Td>
@@ -221,10 +246,11 @@ export default function StudentDetailPage() {
       <CardBody>
         {winnings.isLoading ? <LoadingState /> : winnings.data?.length ? (
           <Table>
-            <THead><Tr><Th>Date</Th><Th>Game</Th><Th>Winning Amount</Th><Th>Action</Th></Tr></THead>
+            <THead><Tr><Th>ID</Th><Th>Date</Th><Th>Game</Th><Th>Winning Amount</Th><Th>Action</Th></Tr></THead>
             <TBody>
               {winnings.data.map(w => (
                 <Tr key={w.id}>
+                  <Td className="font-mono text-xs text-slate-500">#{w.id}</Td>
                   <Td>{new Date(w.date).toLocaleString()}</Td>
                   <Td>{w.game_name}</Td>
                   <Td className="text-emerald-600 font-bold">{w.winning_amount}</Td>

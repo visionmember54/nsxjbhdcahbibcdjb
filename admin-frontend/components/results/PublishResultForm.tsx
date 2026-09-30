@@ -11,6 +11,15 @@ import { Table, TBody, Td, Th, THead, Tr } from '@/components/ui/Table';
 import { Icon } from '@/components/layout/icons';
 import { todayLocalIso } from '@/lib/date';
 
+/** Standard Matka rule: ank = last digit of the panna's digit sum. Mirrors the
+ * backend's derive_ank_from_panna so the admin sees it the instant they type a
+ * valid panna, with no round-trip needed. */
+function computeAnk(panna: string): string {
+  if (!/^\d{3}$/.test(panna)) return '';
+  const sum = panna.split('').reduce((acc, digit) => acc + Number(digit), 0);
+  return String(sum % 10);
+}
+
 function PreviewStat({
   icon,
   tone,
@@ -129,14 +138,28 @@ export default function PublishResultForm() {
         <FormField label="Open Panna (3 digits — derives Open Ank)">
           <Input value={openPanna} onChange={(e) => setOpenPanna(e.target.value)} maxLength={3} placeholder="e.g. 128" />
         </FormField>
-        <FormField label="Open Ank (if no panna, e.g. Gali-Disawar)">
-          <Input value={openAnk} onChange={(e) => setOpenAnk(e.target.value)} maxLength={1} placeholder="0-9" disabled={!!openPanna} />
+        <FormField label={openPanna ? 'Open Ank (auto-derived)' : 'Open Ank (if no panna, e.g. Gali-Disawar)'}>
+          <Input
+            value={openPanna ? computeAnk(openPanna) : openAnk}
+            onChange={(e) => setOpenAnk(e.target.value)}
+            maxLength={1}
+            placeholder="0-9"
+            disabled={!!openPanna}
+            className={openPanna ? 'font-bold text-emerald-700' : ''}
+          />
         </FormField>
         <FormField label="Close Panna (3 digits — derives Close Ank)">
           <Input value={closePanna} onChange={(e) => setClosePanna(e.target.value)} maxLength={3} placeholder="e.g. 600" />
         </FormField>
-        <FormField label="Close Ank (if no panna)">
-          <Input value={closeAnk} onChange={(e) => setCloseAnk(e.target.value)} maxLength={1} placeholder="0-9" disabled={!!closePanna} />
+        <FormField label={closePanna ? 'Close Ank (auto-derived)' : 'Close Ank (if no panna)'}>
+          <Input
+            value={closePanna ? computeAnk(closePanna) : closeAnk}
+            onChange={(e) => setCloseAnk(e.target.value)}
+            maxLength={1}
+            placeholder="0-9"
+            disabled={!!closePanna}
+            className={closePanna ? 'font-bold text-emerald-700' : ''}
+          />
         </FormField>
       </div>
 
@@ -178,9 +201,23 @@ export default function PublishResultForm() {
             <PreviewStat icon="clock" tone="amber" label="Unresolved" value={preview.unresolvedEntries} />
           </div>
 
-          {preview.jodi && (
-            <p className="mt-2.5 text-xs text-slate-500">
-              Derived jodi: <span className="font-semibold text-slate-800">{preview.jodi}</span>
+          {(preview.openAnk || preview.closeAnk || preview.jodi) && (
+            <p className="mt-2.5 space-x-3 text-xs text-slate-500">
+              {preview.openAnk && (
+                <span>
+                  Open Ank: <span className="font-semibold text-slate-800">{preview.openAnk}</span>
+                </span>
+              )}
+              {preview.closeAnk && (
+                <span>
+                  Close Ank: <span className="font-semibold text-slate-800">{preview.closeAnk}</span>
+                </span>
+              )}
+              {preview.jodi && (
+                <span>
+                  Derived jodi: <span className="font-semibold text-slate-800">{preview.jodi}</span>
+                </span>
+              )}
             </p>
           )}
 

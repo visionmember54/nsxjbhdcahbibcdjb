@@ -44,7 +44,11 @@ export function useUpdateMarket() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...payload }: { id: number; [key: string]: unknown }) => api.patch<Market>(`/admin/markets/${id}`, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['markets'] }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['markets'] });
+      qc.invalidateQueries({ queryKey: ['market', variables.id] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 }
 
@@ -52,8 +56,9 @@ export function useUpdateMarketStatus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) => api.post<Market>(`/admin/markets/${id}/status`, { status }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['markets'] });
+      qc.invalidateQueries({ queryKey: ['market', variables.id] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });

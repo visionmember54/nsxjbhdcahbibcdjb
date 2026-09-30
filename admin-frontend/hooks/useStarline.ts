@@ -19,7 +19,10 @@ export function useCreateStarlineSlot() {
   return useMutation({
     mutationFn: (payload: { market_id: number; slot_name: string; start_time: string; cutoff_time: string; display_order?: number }) =>
       api.post<StarlineSlot>('/admin/starline/slots', payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['starlineSlots'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['starlineSlots'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 }
 
@@ -27,6 +30,9 @@ export function useUpdateStarlineSlot() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...payload }: { id: number; [key: string]: unknown }) => api.patch<StarlineSlot>(`/admin/starline/slots/${id}`, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['starlineSlots'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['starlineSlots'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 }

@@ -86,7 +86,7 @@ export default function OverviewPage() {
               value={data.stats.starlineTotalSlots}
               icon="sliders"
               tone="slate"
-              href="/dashboard/markets?category=STARLINE"
+              href="/dashboard/simulations/history?category=STARLINE"
               breakdown={[
                 { label: 'Open now', value: data.stats.starlineOpenSlots, valueClassName: 'text-emerald-600' },
                 { label: 'Closed now', value: data.stats.starlineClosedSlots, valueClassName: 'text-slate-500' },

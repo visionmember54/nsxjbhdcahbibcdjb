@@ -13,6 +13,7 @@ import { useSimulations } from '@/hooks/useSimulations';
 import { useStudents } from '@/hooks/useStudents';
 import { useGameTypes } from '@/hooks/useGameTypes';
 import { useMarkets } from '@/hooks/useMarkets';
+import { useMarketCategories } from '@/hooks/useMarketCategories';
 
 const STATUSES = ['Pending', 'Won', 'Lost', 'Cancelled'];
 
@@ -28,6 +29,8 @@ interface Filters {
   studentId: number | '';
 }
 
+const EMPTY_FILTERS: Filters = { date: '', marketId: '', gameType: '', status: '', studentId: '' };
+
 export default function BidHistoryPage() {
   return (
     <Suspense fallback={<LoadingState />}>
@@ -38,16 +41,21 @@ export default function BidHistoryPage() {
 
 function BidHistoryPageInner() {
   const searchParams = useSearchParams();
-  const { data: marketsPage } = useMarkets({ limit: 200 });
+  const { data: categories } = useMarketCategories();
+
+  // A separate, always-applied selector -- switching bazaars is a completely
+  // different view (Main/Starline/Gali-Disawar bids were previously all mixed
+  // into one list), not just another filter to submit alongside the others.
+  const [category, setCategory] = useState(searchParams.get('category') ?? '');
+
+  const { data: marketsPage } = useMarkets({ limit: 200, category: category || undefined });
   const { data: studentsPage } = useStudents({ limit: 200 });
   const { data: gameTypes } = useGameTypes();
 
   const initial: Filters = {
-    date: '',
-    marketId: '',
+    ...EMPTY_FILTERS,
     gameType: searchParams.get('gameType') ?? '',
     status: searchParams.get('status') ?? '',
-    studentId: '',
   };
 
   const [draft, setDraft] = useState<Filters>(initial);
@@ -61,14 +69,44 @@ function BidHistoryPageInner() {
     gameType: applied.gameType || undefined,
     status: applied.status || undefined,
     date: applied.date || undefined,
+    category: category || undefined,
     limit,
     offset,
   });
 
+  function selectCategory(slug: string) {
+    setCategory(slug);
+    // A market chosen under a different bazaar no longer applies here.
+    setDraft({ ...draft, marketId: '' });
+    setApplied({ ...applied, marketId: '' });
+    setOffset(0);
+  }
+
   return (
     <div>
-      <PageHeader icon="play" title="Bid History" description="Every selection placed, filterable by date, market, game type, and status." />
+      <PageHeader icon="play" title="Bid History" description="Every selection placed, filterable by bazaar, date, market, game type, and status." />
       <Card>
+        <div className="flex flex-wrap gap-2 border-b border-slate-100 p-4">
+          <button
+            onClick={() => selectCategory('')}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+              category === '' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            All Bazaars
+          </button>
+          {categories?.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => selectCategory(c.slug)}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                category === c.slug ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
         <div className="grid gap-4 border-b border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-5">
           <FormField label="Date">
             <Input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
@@ -118,9 +156,8 @@ function BidHistoryPageInner() {
           <Button
             variant="secondary"
             onClick={() => {
-              const cleared: Filters = { date: '', marketId: '', gameType: '', status: '', studentId: '' };
-              setDraft(cleared);
-              setApplied(cleared);
+              setDraft(EMPTY_FILTERS);
+              setApplied(EMPTY_FILTERS);
               setOffset(0);
             }}
           >

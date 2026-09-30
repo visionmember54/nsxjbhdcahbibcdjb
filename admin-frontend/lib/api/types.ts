@@ -192,6 +192,7 @@ export interface SimulationEntry {
   userName: string | null;
   marketId: number;
   marketName: string | null;
+  marketCategory: string | null;
   slotId: number | null;
   gameType: string;
   stage: string | null;
