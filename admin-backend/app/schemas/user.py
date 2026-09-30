@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import Literal
 from datetime import datetime
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_serializer
+
+from app.services.app_api_service import iso_ist
 
 
 class UserRegister(BaseModel):
@@ -37,6 +39,12 @@ class UserOut(BaseModel):
     def has_fcm_token(self) -> bool:
         return bool(self.fcm_token)
 
+    # Stored naive-UTC (no offset) -- serialize with the explicit +05:30 IST offset so the
+    # admin panel's `new Date(...)` doesn't misread it as already-local time and shift it.
+    @field_serializer("last_seen", "created_at")
+    def _serialize_ist(self, value: datetime | None) -> str | None:
+        return iso_ist(value)
+
 
 class UserStatsOut(BaseModel):
     total_added: int
@@ -64,6 +72,10 @@ class UserWithdrawalOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_serializer("created_at")
+    def _serialize_ist(self, value: datetime) -> str | None:
+        return iso_ist(value)
+
 
 class UserBidOut(BaseModel):
     id: int
@@ -77,6 +89,10 @@ class UserBidOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_serializer("created_at")
+    def _serialize_ist(self, value: datetime) -> str | None:
+        return iso_ist(value)
+
 
 class UserTransactionOut(BaseModel):
     id: int
@@ -88,6 +104,10 @@ class UserTransactionOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_serializer("created_at")
+    def _serialize_ist(self, value: datetime) -> str | None:
+        return iso_ist(value)
+
 
 class UserWinningOut(BaseModel):
     id: int
@@ -96,6 +116,10 @@ class UserWinningOut(BaseModel):
     winning_amount: int
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("date")
+    def _serialize_ist(self, value: datetime) -> str | None:
+        return iso_ist(value)
 
 
 class UserTokenResponse(BaseModel):

@@ -337,6 +337,13 @@ def home_dashboard(
             continue
 
         result = shape.latest_published_result(db, market.id)
+        # The app's home-screen card only has two visual states -- a green "Play" look
+        # and a gray "closed" look -- driven off isOpeningLive/isClosingLive. Report both
+        # legs through the single isOpeningLive flag the app already renders green, so a
+        # market with only its Close leg still live (Open passed, Close hasn't) reads the
+        # same "Play" green as one with both legs live, rather than a separate gold/amber
+        # look that reads as "closed" to users. isBiddingAllowed and the actual bet-cutoff
+        # enforcement are unaffected -- this only changes which flag the display uses.
         items.append(
             {
                 "id": str(market.id),
@@ -345,9 +352,9 @@ def home_dashboard(
                 "openTime": shape.format_time(market.opening_time),
                 "closeTime": shape.format_time(market.closing_time),
                 "result": shape.format_result_string(result),
-                "sessionStatus": session_status,
-                "isOpeningLive": is_opening,
-                "isClosingLive": is_closing,
+                "sessionStatus": "OPENING" if is_bidding else session_status,
+                "isOpeningLive": is_bidding,
+                "isClosingLive": False,
                 "isBiddingAllowed": is_bidding,
                 "chartUrl": "",
                 "payoutRatio": shape.payout_ratio(db, market.id),

@@ -57,7 +57,7 @@ function GroupedMarketsView({ onCreate }: { onCreate: () => void }) {
   // One page covers every real-world market count comfortably; grouping by
   // category doesn't mix well with row-level pagination, so this view trades
   // paging for a single complete fetch instead.
-  const { data, isLoading, isError, error } = useMarkets({ limit: 250 });
+  const { data, isLoading, isError, error } = useMarkets({ limit: 200 });
 
   const grouped = useMemo(() => {
     if (!data || !categories) return [];

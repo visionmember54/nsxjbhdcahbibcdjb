@@ -29,7 +29,7 @@ def test_per_number_cap_kicks_in_after_repeated_sends(client):
     from app.core import ratelimit
 
     with _mocked_relay():
-        for _ in range(5):
+        for _ in range(ratelimit.OTP_MAX_PER_NUMBER_WINDOW):
             resp = client.post("/api/v1/auth/register/send-otp", json={"phone": "9333344448"})
             assert resp.status_code == 200, resp.text
             # Bypass the cooldown between iterations without touching the cap counter itself.

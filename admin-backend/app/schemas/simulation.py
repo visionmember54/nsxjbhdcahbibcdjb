@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.services.app_api_service import iso_ist
 
 
 class SelectionEntry(BaseModel):
@@ -77,6 +79,10 @@ class SimulationEntryOut(BaseModel):
     overriddenAt: datetime | None
 
     model_config = {"populate_by_name": True}
+
+    @field_serializer("createdAt", "resolvedAt", "overriddenAt")
+    def _serialize_ist(self, value: datetime | None) -> str | None:
+        return iso_ist(value)
 
 
 class SimulationBatchOut(BaseModel):

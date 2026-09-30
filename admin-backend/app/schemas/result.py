@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.services.app_api_service import iso_ist
 
 
 class ResultUpsert(BaseModel):
@@ -82,3 +84,7 @@ class MarketResultOut(BaseModel):
     correctionReason: str | None
 
     model_config = {"populate_by_name": True}
+
+    @field_serializer("publishedAt")
+    def _serialize_ist(self, value: datetime | None) -> str | None:
+        return iso_ist(value)

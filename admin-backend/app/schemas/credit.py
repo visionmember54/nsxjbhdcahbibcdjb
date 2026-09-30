@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.services.app_api_service import iso_ist
 
 
 class CreditGrant(BaseModel):
@@ -37,6 +39,10 @@ class CreditLedgerOut(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+    @field_serializer("createdAt")
+    def _serialize_ist(self, value: datetime) -> str | None:
+        return iso_ist(value)
+
 
 class GlobalCreditLedgerOut(BaseModel):
     id: int
@@ -51,3 +57,7 @@ class GlobalCreditLedgerOut(BaseModel):
     note: str | None
     visibleToUser: bool
     createdAt: datetime
+
+    @field_serializer("createdAt")
+    def _serialize_ist(self, value: datetime) -> str | None:
+        return iso_ist(value)
