@@ -28,6 +28,7 @@ export default function EditMarketModal({ market, open, onClose }: { market: Mar
   const [resultTime, setResultTime] = useState(market.result_time ?? '');
   const [visible, setVisible] = useState(market.visible);
   const [activeDays, setActiveDays] = useState<string[]>(market.active_days ?? []);
+  const [displayOrder, setDisplayOrder] = useState(market.display_order);
 
   // Re-sync whenever a different market is opened, so stale edits from a
   // previously-open market can't leak into this one.
@@ -40,6 +41,7 @@ export default function EditMarketModal({ market, open, onClose }: { market: Mar
     setResultTime(market.result_time ?? '');
     setVisible(market.visible);
     setActiveDays(market.active_days ?? []);
+    setDisplayOrder(market.display_order);
   }, [market]);
 
   function toggleDay(code: string) {
@@ -58,6 +60,7 @@ export default function EditMarketModal({ market, open, onClose }: { market: Mar
       result_time: resultTime || null,
       visible,
       active_days: activeDays.length ? activeDays : null,
+      display_order: displayOrder,
     });
     onClose();
   }
@@ -85,6 +88,10 @@ export default function EditMarketModal({ market, open, onClose }: { market: Mar
             <Input type="time" value={resultTime} onChange={(e) => setResultTime(e.target.value)} />
           </FormField>
         </div>
+
+        <FormField label="Display order on the app's main screen (lower shows first)">
+          <Input type="number" value={displayOrder} onChange={(e) => setDisplayOrder(Number(e.target.value))} />
+        </FormField>
 
         <FormField label="Active days">
           <div className="flex flex-wrap gap-3">
