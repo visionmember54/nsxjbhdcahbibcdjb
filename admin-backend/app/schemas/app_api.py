@@ -210,6 +210,10 @@ class SupportChatRequest(BaseModel):
     language: str | None = None
 
 
+class SupportChatResolveRequest(BaseModel):
+    sessionId: str
+
+
 class AppCreditRequestCreate(BaseModel):
     requestType: str = Field(default="Deposit")
     amount: int = Field(gt=0, le=1_000_000)

@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import String, and_, cast, func, or_
 from sqlalchemy.orm import Session
 
-from app.core import errors
+from app.core import errors, ratelimit
 from app.core.deps import get_current_user, get_db
 from app.core.errors import AppError
 from app.core.security import hash_password, verify_password
@@ -44,6 +44,7 @@ from app.schemas.app_api import (
     SendRegisterOtpRequest,
     StandardBetRequest,
     SupportChatRequest,
+    SupportChatResolveRequest,
     AppDepositRequest,
     AppWithdrawRequest,
     VerifyLoginOtpRequest,
@@ -1174,14 +1175,23 @@ def _support_thread_payload(db: Session, query: SupportQuery) -> dict:
     }
 
 
+def _owned_query(db: Session, current_user: User, session_id: str) -> SupportQuery | None:
+    """Every chat lookup is scoped to `user_id == current_user.id` -- there is no
+    endpoint anywhere that lets a user fetch, resolve, or append to a session
+    that isn't theirs, even if they can guess or enumerate another user's
+    sessionId. All three support endpoints below run this same ownership check."""
+    return db.query(SupportQuery).filter(SupportQuery.id == int(session_id), SupportQuery.user_id == current_user.id).first()
+
+
 @router.get("/support/chat")
 def get_support_chat(sessionId: str | None = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Polled by the app to pick up admin replies -- POST alone only ever saw the
     user's own message land; this is how an admin's asynchronous reply actually
-    reaches the user's screen."""
+    reaches the user's screen. No sessionId -> the user's single current
+    (not-yet-resolved) thread, matching what POST /support/chat continues by default."""
     query: SupportQuery | None = None
     if sessionId:
-        query = db.query(SupportQuery).filter(SupportQuery.id == int(sessionId), SupportQuery.user_id == current_user.id).first()
+        query = _owned_query(db, current_user, sessionId)
     else:
         query = db.query(SupportQuery).filter(SupportQuery.user_id == current_user.id).order_by(SupportQuery.id.desc()).first()
     if not query:
@@ -1189,11 +1199,64 @@ def get_support_chat(sessionId: str | None = None, current_user: User = Depends(
     return _ok(_support_thread_payload(db, query))
 
 
+@router.get("/support/chat/history")
+def get_support_chat_history(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Every past chat for this user, most recent first -- so a Resolved thread
+    isn't lost the moment a new one starts; it just moves into this list."""
+    queries = (
+        db.query(SupportQuery)
+        .filter(SupportQuery.user_id == current_user.id)
+        .order_by(SupportQuery.id.desc())
+        .all()
+    )
+    items = []
+    for q in queries:
+        last = (
+            db.query(SupportMessage)
+            .filter(SupportMessage.query_id == q.id)
+            .order_by(SupportMessage.id.desc())
+            .first()
+        )
+        items.append({
+            "sessionId": str(q.id),
+            "status": q.status,
+            "updatedAt": q.updated_at,
+            "lastMessage": last.text if last else None,
+        })
+    return _ok({"chats": items})
+
+
+@router.post("/support/chat/resolve")
+def resolve_support_chat(
+    payload: SupportChatResolveRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """User-initiated: 'this is done, my question is answered.' The next message
+    sent with no explicit sessionId starts a brand-new thread instead of
+    reopening this one -- this closed thread stays reachable via /support/chat/history."""
+    query = _owned_query(db, current_user, payload.sessionId)
+    if not query:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+    query.status = "Resolved"
+    query.updated_at = shape.now_ist().strftime("%Y-%m-%d %H:%M:%S")
+    db.commit()
+    db.refresh(query)
+    return _ok(_support_thread_payload(db, query))
+
+
 @router.post("/support/chat")
 def support_chat(payload: SupportChatRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ratelimit.check_support_chat_send_allowed(current_user.id)
+
     query: SupportQuery | None = None
     if payload.sessionId:
-        query = db.query(SupportQuery).filter(SupportQuery.id == int(payload.sessionId), SupportQuery.user_id == current_user.id).first()
+        query = _owned_query(db, current_user, payload.sessionId)
+    else:
+        # No explicit session: continue the user's current thread unless it's
+        # already Resolved, in which case this message starts a fresh one --
+        # that's what keeps a resolved chat as history instead of reopening it.
+        latest = db.query(SupportQuery).filter(SupportQuery.user_id == current_user.id).order_by(SupportQuery.id.desc()).first()
+        if latest and latest.status != "Resolved":
+            query = latest
 
     now = shape.now_ist()
     if not query:
@@ -1208,6 +1271,7 @@ def support_chat(payload: SupportChatRequest, current_user: User = Depends(get_c
     query.updated_at = now.strftime("%Y-%m-%d %H:%M:%S")
     db.commit()
     db.refresh(query)
+    ratelimit.record_support_chat_send(current_user.id)
 
     # Return the real, current thread (not a canned bot line) so the sender's own
     # screen reflects the true state immediately, and any admin reply already

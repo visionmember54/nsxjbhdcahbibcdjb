@@ -102,5 +102,28 @@ def record_otp_send(request: Request, phone: str) -> None:
     _failures.setdefault(f"otp_ip:{client_ip(request)}", []).append(now)
 
 
+# --- Support chat send throttling -------------------------------------------
+# Generous, not strict -- this only exists to stop a runaway client/script from
+# flooding a single user's thread; normal chat use never gets near this cap.
+SUPPORT_CHAT_MAX_PER_USER_WINDOW = 30
+SUPPORT_CHAT_WINDOW_SECONDS = 5 * 60
+
+
+def check_support_chat_send_allowed(user_id: int) -> None:
+    key = f"support_chat_user:{user_id}"
+    hits = _recent(key, SUPPORT_CHAT_WINDOW_SECONDS)
+    if len(hits) >= SUPPORT_CHAT_MAX_PER_USER_WINDOW:
+        retry = max(1, int(SUPPORT_CHAT_WINDOW_SECONDS - (time.time() - hits[0])))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many messages sent. Please wait a moment before sending another.",
+            headers={"Retry-After": str(retry)},
+        )
+
+
+def record_support_chat_send(user_id: int) -> None:
+    _failures.setdefault(f"support_chat_user:{user_id}", []).append(time.time())
+
+
 def reset() -> None:
     _failures.clear()
