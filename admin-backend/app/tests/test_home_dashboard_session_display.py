@@ -15,6 +15,15 @@ def _market_item(client, user_headers, name="TESTGAME"):
     return next(m for m in resp.json()["data"]["markets"] if m["name"] == name)
 
 
+def _future_time_same_day(minutes_ahead: int) -> str:
+    """cutoff_time is a bare time-of-day (no date), so a naive now+Xh can wrap
+    past midnight and alias to an earlier clock time than 'now'. Clamp to
+    end-of-day so the derived time is always unambiguously later today."""
+    now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=0)
+    return min(now + timedelta(minutes=minutes_ahead), end_of_day).time().isoformat()
+
+
 def test_close_only_window_still_reports_as_the_green_opening_flag(client, auth_headers, user_headers):
     """Open time has passed but Close hasn't -- only the Close leg is biddable.
     The app has one visual "Play" (green) state driven off isOpeningLive, and a
@@ -22,7 +31,7 @@ def test_close_only_window_still_reports_as_the_green_opening_flag(client, auth_
     to users -- so this must surface as isOpeningLive=True, not isClosingLive."""
     mid = _market_id(client, auth_headers)
     past = (datetime.now(ZoneInfo("Asia/Kolkata")) - timedelta(minutes=1)).time().isoformat()
-    future = (datetime.now(ZoneInfo("Asia/Kolkata")) + timedelta(hours=1)).time().isoformat()
+    future = _future_time_same_day(60)
     resp = client.patch(f"/admin/markets/{mid}", headers=auth_headers, json={"opening_time": past, "closing_time": future})
     assert resp.status_code == 200, resp.text
 
@@ -36,7 +45,7 @@ def test_close_only_window_still_reports_as_the_green_opening_flag(client, auth_
 def test_both_legs_live_still_reports_as_opening(client, auth_headers, user_headers):
     mid = _market_id(client, auth_headers)
     past = (datetime.now(ZoneInfo("Asia/Kolkata")) - timedelta(minutes=1)).time().isoformat()
-    future = (datetime.now(ZoneInfo("Asia/Kolkata")) + timedelta(hours=2)).time().isoformat()
+    future = _future_time_same_day(120)
     resp = client.patch(f"/admin/markets/{mid}", headers=auth_headers, json={"opening_time": future, "closing_time": future})
     assert resp.status_code == 200, resp.text
     # opening_time in the future -> not live yet; flip opening_time to the past instead.
@@ -69,7 +78,7 @@ def test_actual_bet_cutoff_enforcement_is_unaffected_by_the_display_remap(client
     now reports isOpeningLive=True for the still-live Close leg."""
     mid = _market_id(client, auth_headers)
     past = (datetime.now(ZoneInfo("Asia/Kolkata")) - timedelta(minutes=1)).time().isoformat()
-    future = (datetime.now(ZoneInfo("Asia/Kolkata")) + timedelta(hours=1)).time().isoformat()
+    future = _future_time_same_day(60)
     client.patch(f"/admin/markets/{mid}", headers=auth_headers, json={"opening_time": past, "closing_time": future})
 
     resp = client.post(

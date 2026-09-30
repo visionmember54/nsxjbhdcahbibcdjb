@@ -74,6 +74,7 @@ export default function StudentActivityPage() {
           <Table>
             <THead>
               <Tr>
+                <Th>ID</Th>
                 <Th>When</Th>
                 <Th>Type</Th>
                 <Th>Detail</Th>
@@ -83,6 +84,7 @@ export default function StudentActivityPage() {
             <TBody>
               {feed.map((item) => (
                 <Tr key={item.id}>
+                  <Td className="font-mono text-xs text-slate-500">{item.id}</Td>
                   <Td>{new Date(item.at).toLocaleString()}</Td>
                   <Td className="font-medium text-slate-900">
                     {item.kind === 'credit' ? `Credit: ${item.label}` : `Simulation: ${item.label}`}

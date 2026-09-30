@@ -20,6 +20,10 @@ function invalidate(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['students'] });
   qc.invalidateQueries({ queryKey: ['studentsLookup'] });
   qc.invalidateQueries({ queryKey: ['dashboard'] });
+  // Approving/rejecting always writes a wallet ledger row -- both the
+  // per-student and global ledger views need to reflect it immediately.
+  qc.invalidateQueries({ queryKey: ['creditHistory'] });
+  qc.invalidateQueries({ queryKey: ['globalCreditLedger'] });
 }
 
 export function useApproveCreditRequest() {

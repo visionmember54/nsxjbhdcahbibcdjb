@@ -25,6 +25,11 @@ export function useUpdateAdmin() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...payload }: { id: number; status?: string; role?: string }) => api.patch<AdminUser>(`/admin/admins/${id}`, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admins'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admins'] });
+      // Changing an admin's own role/status must re-check permission-gated
+      // UI immediately, not after a logout/login.
+      qc.invalidateQueries({ queryKey: ['currentAdmin'] });
+    },
   });
 }

@@ -64,6 +64,7 @@ export default function AllTransactionsPage() {
           <Table>
             <THead>
               <Tr>
+                <Th>ID</Th>
                 <Th>User</Th>
                 <Th>Type</Th>
                 <Th>Amount</Th>
@@ -76,6 +77,7 @@ export default function AllTransactionsPage() {
             <TBody>
               {data.items.map((entry) => (
                 <Tr key={entry.id}>
+                  <Td className="font-mono text-xs text-slate-500">#{entry.id}</Td>
                   <Td className="font-medium text-slate-900">
                     <Link href={`/dashboard/students/${entry.userId}`} className="text-brand-700 hover:underline">
                       {entry.userName}

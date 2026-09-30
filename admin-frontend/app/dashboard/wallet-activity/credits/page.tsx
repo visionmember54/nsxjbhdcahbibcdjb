@@ -100,6 +100,7 @@ function LearningCreditsPageInner() {
               <Table>
                 <THead>
                   <Tr>
+                    <Th>ID</Th>
                     <Th>Type</Th>
                     <Th>Amount</Th>
                     <Th>Balance after</Th>
@@ -112,6 +113,7 @@ function LearningCreditsPageInner() {
                 <TBody>
                   {history.items.map((h) => (
                     <Tr key={h.id}>
+                      <Td className="font-mono text-xs text-slate-500">#{h.id}</Td>
                       <Td className="font-medium text-slate-900">{ledgerTypeLabel(h.type)}</Td>
                       <Td className={h.amount >= 0 ? 'text-emerald-600' : 'text-red-600'}>
                         {h.amount >= 0 ? '+' : ''}

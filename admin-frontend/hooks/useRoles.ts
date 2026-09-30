@@ -31,6 +31,12 @@ export function useSetRolePermissions() {
   return useMutation({
     mutationFn: ({ roleId, permissionCodes }: { roleId: number; permissionCodes: string[] }) =>
       api.put<Role>(`/admin/roles/${roleId}/permissions`, { permission_codes: permissionCodes }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['roles'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['roles'] });
+      // If this role belongs to the editing admin (or one they're currently
+      // viewing), permission-gated buttons across the panel must re-check
+      // now, not after a logout/login.
+      qc.invalidateQueries({ queryKey: ['currentAdmin'] });
+    },
   });
 }

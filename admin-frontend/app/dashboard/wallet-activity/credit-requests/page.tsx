@@ -99,6 +99,7 @@ function CreditRequestsPageInner() {
           <Table>
             <THead>
               <Tr>
+                <Th>ID</Th>
                 <Th>User</Th>
                 <Th>Type</Th>
                 <Th>Amount</Th>
@@ -111,6 +112,7 @@ function CreditRequestsPageInner() {
             <TBody>
               {requests.map((r) => (
                 <Tr key={r.id}>
+                  <Td className="font-mono text-xs text-slate-500">#{r.id}</Td>
                   <Td className="font-medium text-slate-900">
                     <Link href={`/dashboard/students/${r.userId}`} className="text-brand-700 hover:underline">
                       {r.userName}

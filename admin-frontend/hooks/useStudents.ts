@@ -32,7 +32,11 @@ export function useUpdateStudent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, status, reason }: { id: number; status: 'active' | 'disabled'; reason?: string }) => api.patch<Student>(`/admin/users/${id}`, { status, reason }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['students'] }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['students'] });
+      qc.invalidateQueries({ queryKey: ['student', variables.id] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 }
 

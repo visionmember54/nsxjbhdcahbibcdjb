@@ -17,6 +17,8 @@ function invalidateAfterCreditChange(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['students'] });
   qc.invalidateQueries({ queryKey: ['creditHistory'] });
   qc.invalidateQueries({ queryKey: ['dashboard'] });
+  // Same underlying ledger table the global ledger view reads from.
+  qc.invalidateQueries({ queryKey: ['globalCreditLedger'] });
 }
 
 export function useGrantCredits() {
