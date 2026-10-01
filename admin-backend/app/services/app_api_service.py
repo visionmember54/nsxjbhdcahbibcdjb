@@ -33,12 +33,14 @@ def today_ist() -> date:
 
 def iso_ist(value: datetime | None) -> str | None:
     """Stored datetimes are naive UTC; send them with an explicit +05:30 offset so the app
-    doesn't read them as local time (which would show them 5.5 hours early)."""
+    doesn't read them as local time (which would show them 5.5 hours early). Microseconds
+    are dropped -- nothing downstream needs sub-second precision and it just clutters the
+    string (e.g. "23:00:59+05:30" instead of "23:00:59.513944+05:30")."""
     if value is None:
         return None
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(IST).isoformat()
+    return value.astimezone(IST).replace(microsecond=0).isoformat()
 
 def format_ist(value: datetime | None) -> str | None:
     """Human-readable IST timestamp for history-style endpoints, e.g. "27-09-2026 10:15 AM".
