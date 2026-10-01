@@ -8,7 +8,7 @@ there is deliberately no deposit/withdrawal/bank-detail schema in this file.
 from __future__ import annotations
 
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, Field, model_validator
 
@@ -205,9 +205,22 @@ class GaliDesawarBetRequest(BaseModel):
 
 
 class SupportChatRequest(BaseModel):
-    message: str = Field(min_length=1)
+    message: str | None = Field(default=None, min_length=1)
     sessionId: str | None = None
     language: str | None = None
+    # The file itself goes straight from the client to Firebase Storage; this
+    # is just the resulting download URL, same pattern as credit-request
+    # screenshots (screenshotUrl).
+    attachmentUrl: str | None = None
+    attachmentType: Literal["image", "audio"] | None = None
+
+    @model_validator(mode="after")
+    def _require_text_or_attachment(self):
+        if not self.message and not self.attachmentUrl:
+            raise ValueError("Either message or attachmentUrl is required")
+        if self.attachmentUrl and not self.attachmentType:
+            raise ValueError("attachmentType is required when attachmentUrl is set")
+        return self
 
 
 class SupportChatResolveRequest(BaseModel):

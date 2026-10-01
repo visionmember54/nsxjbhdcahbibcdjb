@@ -2,16 +2,18 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class QueryMessageOut(BaseModel):
     id: int
     sender: Literal["user", "admin"]
-    text: str
+    text: str | None
     time: str
+    attachment_url: str | None = Field(default=None, serialization_alias="attachmentUrl")
+    attachment_type: str | None = Field(default=None, serialization_alias="attachmentType")
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class QueryCreate(BaseModel):
@@ -22,7 +24,17 @@ class QueryCreate(BaseModel):
 
 
 class ReplyCreate(BaseModel):
-    message: str = Field(min_length=1)
+    message: str | None = Field(default=None, min_length=1)
+    attachmentUrl: str | None = None
+    attachmentType: Literal["image", "audio"] | None = None
+
+    @model_validator(mode="after")
+    def _require_text_or_attachment(self):
+        if not self.message and not self.attachmentUrl:
+            raise ValueError("Either message or attachmentUrl is required")
+        if self.attachmentUrl and not self.attachmentType:
+            raise ValueError("attachmentType is required when attachmentUrl is set")
+        return self
 
 
 class SupportQueryOut(BaseModel):

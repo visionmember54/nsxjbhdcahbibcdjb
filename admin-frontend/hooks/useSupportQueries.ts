@@ -20,8 +20,17 @@ export function useSupportQueries(params: { limit?: number; offset?: number } = 
 export function useReplyToQuery() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, message }: { id: number; message: string }) =>
-      api.post<SupportQuery>(`/admin/queries/${id}/reply`, { message }),
+    mutationFn: ({
+      id,
+      message,
+      attachmentUrl,
+      attachmentType,
+    }: {
+      id: number;
+      message?: string;
+      attachmentUrl?: string;
+      attachmentType?: 'image' | 'audio';
+    }) => api.post<SupportQuery>(`/admin/queries/${id}/reply`, { message, attachmentUrl, attachmentType }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['supportQueries'] }),
   });
 }

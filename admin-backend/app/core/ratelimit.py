@@ -125,5 +125,28 @@ def record_support_chat_send(user_id: int) -> None:
     _failures.setdefault(f"support_chat_user:{user_id}", []).append(time.time())
 
 
+# --- Support chat upload throttling -----------------------------------------
+# Tighter than the text-message cap -- uploads cost real storage, each one
+# gets fully read into memory and written to the database.
+SUPPORT_UPLOAD_MAX_PER_USER_WINDOW = 10
+SUPPORT_UPLOAD_WINDOW_SECONDS = 5 * 60
+
+
+def check_support_upload_allowed(user_id: int) -> None:
+    key = f"support_upload_user:{user_id}"
+    hits = _recent(key, SUPPORT_UPLOAD_WINDOW_SECONDS)
+    if len(hits) >= SUPPORT_UPLOAD_MAX_PER_USER_WINDOW:
+        retry = max(1, int(SUPPORT_UPLOAD_WINDOW_SECONDS - (time.time() - hits[0])))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many uploads. Please wait a moment before sending another.",
+            headers={"Retry-After": str(retry)},
+        )
+
+
+def record_support_upload(user_id: int) -> None:
+    _failures.setdefault(f"support_upload_user:{user_id}", []).append(time.time())
+
+
 def reset() -> None:
     _failures.clear()

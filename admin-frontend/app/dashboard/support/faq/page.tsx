@@ -1,100 +1,206 @@
 'use client';
 
-import { useConfirm } from '@/components/ui/Feedback';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PageHeader from '@/components/layout/PageHeader';
-import { Card } from '@/components/ui/Card';
-import { Table, TBody, Td, Th, THead, Tr } from '@/components/ui/Table';
+import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
-import Modal from '@/components/ui/Modal';
-import { FormField, Input, Textarea } from '@/components/ui/Field';
-import { useFaqs, useCreateFaq, useUpdateFaq, useDeleteFaq } from '@/hooks/useContent';
+import { Input, Select, Textarea } from '@/components/ui/Field';
+import { Icon } from '@/components/layout/icons';
+import { useSupportQueries, useReplyToQuery } from '@/hooks/useSupportQueries';
+import { usePermissions } from '@/hooks/usePermissions';
 
-export default function FaqPage() {
-  const { data: faqs, isLoading, isError, error } = useFaqs();
-  const createFaq = useCreateFaq();
-  const updateFaq = useUpdateFaq();
-  const confirm = useConfirm();
-  const deleteFaq = useDeleteFaq();
-  const [open, setOpen] = useState(false);
+const PRIORITY_TONE: Record<string, 'red' | 'amber' | 'slate'> = {
+  High: 'red',
+  Normal: 'slate',
+  Low: 'slate',
+};
+
+const STATUS_TONE: Record<string, 'blue' | 'amber' | 'green'> = {
+  Open: 'blue',
+  Pending: 'amber',
+  Resolved: 'green',
+};
+
+export default function SupportQueriesPage() {
+  const { data, isLoading, isError, error } = useSupportQueries({ limit: 100 });
+  const reply = useReplyToQuery();
+  const { has } = usePermissions();
+  const canReply = has('support.manage');
+
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [message, setMessage] = useState('');
+  const [attachmentUrl, setAttachmentUrl] = useState('');
+  const [attachmentType, setAttachmentType] = useState<'image' | 'audio'>('image');
+  const [statusFilter, setStatusFilter] = useState<'' | 'Open' | 'Pending' | 'Resolved'>('');
+
+  const queries = useMemo(() => {
+    const items = data?.items ?? [];
+    return statusFilter ? items.filter((q) => q.status === statusFilter) : items;
+  }, [data, statusFilter]);
+
+  const selected = queries.find((q) => q.id === selectedId) ?? queries[0] ?? null;
+
+  // Selecting a different ticket (or the list refetching) shouldn't leave a
+  // half-typed reply pointed at the wrong ticket.
+  useEffect(() => {
+    setMessage('');
+    setAttachmentUrl('');
+  }, [selected?.id]);
+
+  const openCount = (data?.items ?? []).filter((q) => q.status === 'Open').length;
 
   return (
     <div>
-      <PageHeader icon="support" title="FAQ" description="Frequently asked questions shown to users." action={<Button onClick={() => setOpen(true)}>+ New FAQ</Button>} />
-      <Card>
-        {isLoading && <LoadingState />}
-        {isError && <ErrorState message={(error as Error).message} />}
-        {faqs && faqs.length === 0 && <EmptyState title="No FAQs yet" />}
+      <PageHeader
+        icon="support"
+        title="Support Queries"
+        description="User questions and issues submitted from the app — respond here."
+        action={openCount > 0 ? <Badge tone="amber">{openCount} awaiting reply</Badge> : undefined}
+      />
 
-        {faqs && faqs.length > 0 && (
-          <Table>
-            <THead>
-              <Tr>
-                <Th>Question</Th>
-                <Th>Answer</Th>
-                <Th>Status</Th>
-                <Th></Th>
-              </Tr>
-            </THead>
-            <TBody>
-              {faqs.map((f) => (
-                <Tr key={f.id}>
-                  <Td className="max-w-xs font-medium text-slate-900">{f.question}</Td>
-                  <Td className="max-w-md truncate">{f.answer}</Td>
-                  <Td>
-                    <Badge tone={f.enabled ? 'green' : 'slate'}>{f.enabled ? 'Enabled' : 'Disabled'}</Badge>
-                  </Td>
-                  <Td className="space-x-3">
-                    <button
-                      className="text-xs font-semibold text-brand-600 hover:underline"
-                      onClick={() => updateFaq.mutate({ id: f.id, enabled: !f.enabled })}
-                    >
-                      {f.enabled ? 'Disable' : 'Enable'}
-                    </button>
-                    <button
-                      className="text-xs font-semibold text-red-600 hover:underline"
-                      onClick={async () => (await confirm('Delete this FAQ?')) && deleteFaq.mutate(f.id)}
-                    >
-                      Delete
-                    </button>
-                  </Td>
-                </Tr>
+      {isLoading && <LoadingState />}
+      {isError && <ErrorState message={(error as Error).message} />}
+
+      {!isLoading && !isError && queries.length === 0 && (
+        <EmptyState title="No support queries yet" hint="They'll show up here as soon as a user reaches out." />
+      )}
+
+      {!isLoading && !isError && queries.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Tickets</CardTitle>
+              <div className="flex gap-1">
+                {(['', 'Open', 'Pending', 'Resolved'] as const).map((s) => (
+                  <button
+                    key={s || 'all'}
+                    onClick={() => setStatusFilter(s)}
+                    className={`rounded-md px-2 py-1 text-xs font-semibold transition-colors ${
+                      statusFilter === s ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    {s || 'All'}
+                  </button>
+                ))}
+              </div>
+            </CardHeader>
+            <div className="max-h-[32rem] divide-y divide-slate-100 overflow-y-auto">
+              {queries.map((q) => (
+                <button
+                  key={q.id}
+                  onClick={() => setSelectedId(q.id)}
+                  className={`block w-full px-4 py-3 text-left transition-colors ${
+                    selected?.id === q.id ? 'bg-brand-50' : 'hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-semibold text-slate-900">{q.user}</span>
+                    <Badge tone={STATUS_TONE[q.status] ?? 'slate'}>{q.status}</Badge>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-slate-600">{q.subject}</p>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
+                    <Badge tone={PRIORITY_TONE[q.priority] ?? 'slate'}>{q.priority}</Badge>
+                    <span>{q.updatedAt}</span>
+                  </div>
+                </button>
               ))}
-            </TBody>
-          </Table>
-        )}
-      </Card>
+            </div>
+          </Card>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="New FAQ">
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const form = new FormData(e.currentTarget as HTMLFormElement);
-            await createFaq.mutateAsync({
-              question: String(form.get('question') || ''),
-              answer: String(form.get('answer') || ''),
-              display_order: Number(form.get('display_order') || 0),
-            });
-            setOpen(false);
-          }}
-        >
-          <FormField label="Question">
-            <Input name="question" required />
-          </FormField>
-          <FormField label="Answer">
-            <Textarea name="answer" rows={3} required />
-          </FormField>
-          <FormField label="Display order">
-            <Input name="display_order" type="number" defaultValue={0} />
-          </FormField>
-          {createFaq.isError && <p className="mb-2 text-xs text-red-600">{(createFaq.error as Error).message}</p>}
-          <Button type="submit" loading={createFaq.isPending} className="w-full">
-            Create
-          </Button>
-        </form>
-      </Modal>
+          <Card className="lg:col-span-3">
+            {!selected ? (
+              <EmptyState title="Select a ticket" />
+            ) : (
+              <>
+                <CardHeader>
+                  <CardTitle subtitle={selected.subject}>{selected.user}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={PRIORITY_TONE[selected.priority] ?? 'slate'}>{selected.priority}</Badge>
+                    <Badge tone={STATUS_TONE[selected.status] ?? 'slate'}>{selected.status}</Badge>
+                  </div>
+                </CardHeader>
+
+                <div className="max-h-96 space-y-3 overflow-y-auto p-5">
+                  {selected.messages.map((m) => (
+                    <div key={m.id} className={`flex ${m.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        className={`max-w-[80%] rounded-xl px-3.5 py-2.5 text-sm ${
+                          m.sender === 'admin'
+                            ? 'bg-gradient-to-b from-brand-500 to-brand-600 text-white'
+                            : 'bg-slate-100 text-slate-800'
+                        }`}
+                      >
+                        {m.attachmentType === 'image' && m.attachmentUrl && (
+                          <a href={m.attachmentUrl} target="_blank" rel="noreferrer" className="block">
+                            <img src={m.attachmentUrl} alt="Attachment" className="mb-1.5 max-h-56 w-full rounded-lg object-cover" />
+                          </a>
+                        )}
+                        {m.attachmentType === 'audio' && m.attachmentUrl && (
+                          <audio controls src={m.attachmentUrl} className="mb-1.5 w-full" />
+                        )}
+                        {m.text && <p>{m.text}</p>}
+                        <p className={`mt-1 text-[10px] ${m.sender === 'admin' ? 'text-brand-100' : 'text-slate-400'}`}>
+                          {m.sender === 'admin' ? 'You' : selected.user} · {m.time}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {canReply ? (
+                  <div className="border-t border-slate-100 p-4">
+                    <Textarea
+                      rows={2}
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      placeholder="Type a reply…"
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <Input
+                        className="flex-1"
+                        value={attachmentUrl}
+                        onChange={(e) => setAttachmentUrl(e.target.value)}
+                        placeholder="Optional: paste an image/voice-note URL to attach"
+                      />
+                      <Select className="w-28" value={attachmentType} onChange={(e) => setAttachmentType(e.target.value as 'image' | 'audio')}>
+                        <option value="image">Image</option>
+                        <option value="audio">Voice</option>
+                      </Select>
+                    </div>
+                    {reply.isError && <p className="mt-2 text-xs text-red-600">{(reply.error as Error).message}</p>}
+                    <Button
+                      className="mt-2"
+                      size="sm"
+                      loading={reply.isPending}
+                      disabled={!message.trim() && !attachmentUrl.trim()}
+                      onClick={() => {
+                        reply.mutate(
+                          {
+                            id: selected.id,
+                            message: message.trim() || undefined,
+                            attachmentUrl: attachmentUrl.trim() || undefined,
+                            attachmentType: attachmentUrl.trim() ? attachmentType : undefined,
+                          },
+                          { onSuccess: () => { setMessage(''); setAttachmentUrl(''); } }
+                        );
+                      }}
+                    >
+                      <Icon name="check" className="h-3.5 w-3.5" />
+                      Send reply
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="border-t border-slate-100 p-4 text-xs text-slate-400">
+                    You don&rsquo;t have permission to reply to support queries.
+                  </p>
+                )}
+              </>
+            )}
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

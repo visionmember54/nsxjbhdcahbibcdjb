@@ -10,9 +10,10 @@ webhook endpoint in this file -- see the accompanying report for why.
 """
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import String, and_, cast, func, or_
 from sqlalchemy.orm import Session
 
@@ -27,7 +28,7 @@ from app.models.game_type import GameType, GameTypeConfig
 from app.models.market import Market, MarketCategory, StarlineSlot
 from app.models.market_result import MarketResult
 from app.models.simulation import SimulationBatch, SimulationEntry
-from app.models.support import SupportMessage, SupportQuery
+from app.models.support import SupportAttachment, SupportMessage, SupportQuery
 from app.models.user import User
 from app.schemas.app_api import (
     AppCreditRequestCreate,
@@ -1171,7 +1172,13 @@ def _support_thread_payload(db: Session, query: SupportQuery) -> dict:
     return {
         "sessionId": str(query.id),
         "status": query.status,
-        "messages": [{"id": m.id, "sender": m.sender, "text": m.text, "time": m.time} for m in messages],
+        "messages": [
+            {
+                "id": m.id, "sender": m.sender, "text": m.text, "time": m.time,
+                "attachmentUrl": m.attachment_url, "attachmentType": m.attachment_type,
+            }
+            for m in messages
+        ],
     }
 
 
@@ -1181,6 +1188,66 @@ def _owned_query(db: Session, current_user: User, session_id: str) -> SupportQue
     that isn't theirs, even if they can guess or enumerate another user's
     sessionId. All three support endpoints below run this same ownership check."""
     return db.query(SupportQuery).filter(SupportQuery.id == int(session_id), SupportQuery.user_id == current_user.id).first()
+
+
+_MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024  # 8MB -- generous for a phone photo or a short voice note
+# An explicit allowlist, not just an "image/*"/"audio/*" prefix check: in particular this
+# excludes image/svg+xml, which can carry an embedded <script> that would run if the
+# attachment URL is ever opened directly in a tab rather than inside an <img> tag.
+_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+_ALLOWED_AUDIO_TYPES = {
+    "audio/mpeg", "audio/mp4", "audio/m4a", "audio/x-m4a", "audio/aac",
+    "audio/wav", "audio/x-wav", "audio/webm", "audio/3gpp", "audio/amr", "audio/ogg",
+}
+
+
+@router.post("/support/chat/upload")
+async def upload_support_attachment(
+    file: UploadFile = File(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """Stores the file in this app's own database and returns a URL pointing
+    back at GET /support/chat/attachments/{id} below -- no third-party storage
+    service, no new credentials, nothing to configure, no extra cost."""
+    ratelimit.check_support_upload_allowed(current_user.id)
+
+    content_type = (file.content_type or "").lower()
+    if content_type in _ALLOWED_IMAGE_TYPES:
+        attachment_type = "image"
+    elif content_type in _ALLOWED_AUDIO_TYPES:
+        attachment_type = "audio"
+    else:
+        raise AppError(
+            errors.INVALID_ATTACHMENT,
+            f"Unsupported file type '{content_type or 'unknown'}' -- only common image or audio formats are accepted",
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = await file.read()
+    if not data:
+        raise AppError(errors.INVALID_ATTACHMENT, "The uploaded file is empty", status.HTTP_400_BAD_REQUEST)
+    if len(data) > _MAX_ATTACHMENT_BYTES:
+        raise AppError(errors.INVALID_ATTACHMENT, "File is too large -- the limit is 8 MB", status.HTTP_400_BAD_REQUEST)
+
+    attachment = SupportAttachment(id=str(uuid.uuid4()), content_type=content_type, data=data)
+    db.add(attachment)
+    db.commit()
+    ratelimit.record_support_upload(current_user.id)
+
+    return _ok({
+        "attachmentUrl": f"/api/v1/support/chat/attachments/{attachment.id}",
+        "attachmentType": attachment_type,
+    })
+
+
+@router.get("/support/chat/attachments/{attachment_id}")
+def get_support_attachment(attachment_id: str, db: Session = Depends(get_db)):
+    """Deliberately no auth check -- the id is an unguessable UUID, and a plain
+    <img>/<audio> src request from a browser can't attach a Bearer header
+    anyway. Same security model as every other chat app's media links."""
+    attachment = db.get(SupportAttachment, attachment_id)
+    if not attachment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
+    return Response(content=attachment.data, media_type=attachment.content_type)
 
 
 @router.get("/support/chat")
@@ -1217,11 +1284,19 @@ def get_support_chat_history(current_user: User = Depends(get_current_user), db:
             .order_by(SupportMessage.id.desc())
             .first()
         )
+        if last and last.text:
+            preview = last.text
+        elif last and last.attachment_type == "audio":
+            preview = "🎤 Voice message"
+        elif last and last.attachment_type == "image":
+            preview = "📷 Photo"
+        else:
+            preview = None
         items.append({
             "sessionId": str(q.id),
             "status": q.status,
             "updatedAt": q.updated_at,
-            "lastMessage": last.text if last else None,
+            "lastMessage": preview,
         })
     return _ok({"chats": items})
 
@@ -1267,7 +1342,10 @@ def support_chat(payload: SupportChatRequest, current_user: User = Depends(get_c
         db.add(query)
         db.flush()
 
-    db.add(SupportMessage(query_id=query.id, sender="user", text=payload.message, time=now.strftime("%H:%M %p")))
+    db.add(SupportMessage(
+        query_id=query.id, sender="user", text=payload.message, time=now.strftime("%I:%M %p"),
+        attachment_url=payload.attachmentUrl, attachment_type=payload.attachmentType,
+    ))
     query.updated_at = now.strftime("%Y-%m-%d %H:%M:%S")
     db.commit()
     db.refresh(query)

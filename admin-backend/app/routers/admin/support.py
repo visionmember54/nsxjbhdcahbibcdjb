@@ -13,6 +13,7 @@ from app.schemas.common import Page, PageParams
 from app.schemas.support import QueryCreate, QueryMessageOut, ReplyCreate, SupportQueryOut
 from datetime import datetime, timezone
 from app.models.audit import AuditLog
+from app.services import app_api_service as shape
 
 router = APIRouter(prefix="/admin/queries", tags=["support"])
 
@@ -52,11 +53,11 @@ async def create_query(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    now = datetime.now(timezone.utc)
+    now = shape.now_ist()
     query = SupportQuery(user_id=user.id, subject=payload.subject, status="Open", priority=payload.priority, updated_at=now.strftime("%Y-%m-%d %H:%M:%S"))
     db.add(query)
     db.flush()
-    db.add(SupportMessage(query_id=query.id, sender="user", text=payload.message, time=now.strftime("%H:%M %p")))
+    db.add(SupportMessage(query_id=query.id, sender="user", text=payload.message, time=now.strftime("%I:%M %p")))
     db.add(AuditLog(actor=current_admin.name, action="support_ticket_created", details=f"Ticket created for {user.name}", created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
     db.commit()
     db.refresh(query)
@@ -74,8 +75,11 @@ async def reply_to_query(
     if not query:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
 
-    now = datetime.now(timezone.utc)
-    db.add(SupportMessage(query_id=query_id, sender="admin", text=payload.message, time=now.strftime("%H:%M %p")))
+    now = shape.now_ist()
+    db.add(SupportMessage(
+        query_id=query_id, sender="admin", text=payload.message, time=now.strftime("%I:%M %p"),
+        attachment_url=payload.attachmentUrl, attachment_type=payload.attachmentType,
+    ))
     query.status = "Pending"
     query.updated_at = now.strftime("%Y-%m-%d %H:%M:%S")
     db.add(AuditLog(actor=current_admin.name, action="support_reply", details=f"Replied to ticket #{query_id}", created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))

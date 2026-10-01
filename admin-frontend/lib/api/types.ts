@@ -242,15 +242,17 @@ export interface MarketResult {
 export interface SupportQueryMessage {
   id: number;
   sender: 'user' | 'admin';
-  text: string;
+  text: string | null;
   time: string;
+  attachmentUrl: string | null;
+  attachmentType: 'image' | 'audio' | null;
 }
 
 export interface SupportQuery {
   id: number;
   user: string;
   subject: string;
-  status: 'Open' | 'Pending';
+  status: 'Open' | 'Pending' | 'Resolved';
   priority: 'Low' | 'Normal' | 'High';
   updatedAt: string;
   messages: SupportQueryMessage[];
