@@ -265,6 +265,9 @@ export interface CreditRequest {
   userPhone: string;
   requestedAmount: number;
   requestType: string;
+  orderId?: string | null;
+  transactionId?: string | null;
+  upiApp?: string | null;
   utrNumber: string | null;
   screenshotUrl: string | null;
   paymentDetails: string | null;
@@ -304,6 +307,7 @@ export interface ResultPreview {
   totalStakeAtRisk: number;
   totalPotentialPayout: number;
   winners: ResultPreviewWinner[];
+  reviewRows: (ResultPreviewWinner & { isWinner: boolean })[];
 }
 
 export interface SiteSetting {

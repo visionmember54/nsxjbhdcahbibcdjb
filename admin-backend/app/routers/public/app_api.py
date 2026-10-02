@@ -1,20 +1,20 @@
 """Mobile-app compatibility layer, mounted at /api/v1/* to match the Flutter
 app's ApiEndPoints.baseUrl contract (and the fuller page-by-page API spec
 cross-checked against it), so the app can point at this backend with
-minimal-to-zero client-side changes.
-
-Scope boundary (deliberate, unchanged from the first pass): every endpoint
-here operates on the existing virtual Learning Credits model only. There is
-intentionally no deposit, withdrawal, payment-gateway, bank-detail, or
-webhook endpoint in this file -- see the accompanying report for why.
+minimal-to-zero client-side changes. UPI deposit requests are recorded here,
+but their status is only confirmed after admin review. Returning from a UPI
+app or submitting a client-provided UTR is not proof of settlement.
 """
 from __future__ import annotations
 
+import secrets
+import hashlib
 import uuid
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import String, and_, cast, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import errors, ratelimit
@@ -47,6 +47,7 @@ from app.schemas.app_api import (
     SupportChatRequest,
     SupportChatResolveRequest,
     AppDepositRequest,
+    AppDepositVerifyRequest,
     AppWithdrawRequest,
     VerifyLoginOtpRequest,
 )
@@ -64,7 +65,11 @@ def _ok(data: dict, status_code: int = 200, message: str = "Success") -> dict:
 
 
 def _find_market_by_name(db: Session, name: str) -> Market:
-    market = db.query(Market).filter(func.upper(Market.name) == name.strip().upper()).first()
+    """Trims both sides of the comparison -- several markets have a stray
+    leading/trailing space in their stored name (e.g. "SUPERME DAY " with a
+    trailing space), and the incoming name was already being trimmed, so an
+    exact-match client request was silently 404ing against those rows."""
+    market = db.query(Market).filter(func.upper(func.trim(Market.name)) == name.strip().upper()).first()
     if not market:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Market '{name}' not found")
     return market
@@ -330,7 +335,7 @@ def home_dashboard(
 
     items = []
     for market, category_slug in rows:
-        session_status, is_opening, is_closing, is_bidding = shape.market_session_status(db, market)
+        session_status, is_opening, is_closing, is_bidding = shape.market_session_status(market)
         if filter == "LIVE" and session_status not in ("OPENING", "CLOSING"):
             continue
         if filter == "UPCOMING" and session_status != "UPCOMING":
@@ -454,7 +459,7 @@ def markets_live_results(db: Session = Depends(get_db)):
     out = []
     for market in markets:
         result = shape.latest_published_result(db, market.id)
-        session_status, is_opening, is_closing, is_bidding = shape.market_session_status(db, market)
+        session_status, is_opening, is_closing, is_bidding = shape.market_session_status(market)
         out.append(
             {
                 "id": str(market.id),
@@ -474,7 +479,7 @@ def market_game_modes(market_id: int, slot_id: int | None = None, db: Session = 
     if not market:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Market not found")
 
-    session_status, is_opening, is_closing, is_bidding = shape.market_session_status(db, market)
+    session_status, is_opening, is_closing, is_bidding = shape.market_session_status(market)
     current_session = "OPEN" if is_opening else ("CLOSE" if is_closing else session_status)
 
     configs = (
@@ -717,7 +722,7 @@ def gali_desawar_markets(db: Session = Depends(get_db)):
     for market in markets:
         result = shape.latest_published_result(db, market.id)
         result_str = (result.single_result or result.open_ank or "**") if result else "**"
-        _, _, _, is_bidding = shape.market_session_status(db, market)
+        _, _, _, is_bidding = shape.market_session_status(market)
         out.append(
             {
                 "id": str(market.id),
@@ -1002,6 +1007,8 @@ def wallet_statement(
 
 @router.post("/wallet/deposit/initiate", status_code=status.HTTP_201_CREATED)
 def deposit_initiate(payload: AppDepositRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if payload.requestType.strip().lower() != "deposit":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="requestType must be Deposit")
     settings = {row.key: row.value for row in db.query(SiteSetting).all()}
     min_deposit = _setting_int(settings, "payment_min_deposit", 300)
     max_deposit = _setting_int(settings, "payment_max_deposit", 100000)
@@ -1011,30 +1018,141 @@ def deposit_initiate(payload: AppDepositRequest, current_user: User = Depends(ge
     if payload.amount > max_deposit:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Maximum deposit amount is {max_deposit}")
 
-    req = CreditRequest(
-        user_id=current_user.id,
-        request_type=payload.requestType,
-        requested_amount=payload.amount,
-        utr_number=payload.utrNumber,
-        screenshot_url=payload.screenshotUrl,
-        payment_details=payload.paymentDetails,
-        reason=payload.reason,
-        status="Pending"
+    if payload.orderId:
+        order_id = payload.orderId.strip()
+    elif payload.transactionId or payload.utrNumber:
+        stable_reference = payload.transactionId or payload.utrNumber or ""
+        digest = hashlib.sha256(f"{current_user.id}:{stable_reference}".encode()).hexdigest()[:62].upper()
+        order_id = f"KM{digest}"
+    else:
+        order_id = f"KM{secrets.token_hex(12).upper()}"
+    if not order_id:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="orderId cannot be blank")
+    created = False
+    req = db.query(CreditRequest).filter(CreditRequest.order_id == order_id).with_for_update().first()
+    if req:
+        if req.user_id != current_user.id or req.request_type.lower() != "deposit":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="orderId is already in use")
+        if req.requested_amount != payload.amount:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="orderId already exists with a different amount")
+        if req.status == "Pending":
+            if payload.transactionId and req.transaction_id and payload.transactionId != req.transaction_id:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="orderId already has a different transactionId")
+            if payload.utrNumber:
+                duplicate_utr = db.query(CreditRequest.id).filter(
+                    CreditRequest.utr_number == payload.utrNumber,
+                    CreditRequest.id != req.id,
+                ).first()
+                if duplicate_utr:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="UTR has already been submitted")
+                req.utr_number = payload.utrNumber
+            req.transaction_id = req.transaction_id or payload.transactionId
+            req.upi_app = req.upi_app or payload.upiApp
+            req.screenshot_url = payload.screenshotUrl or req.screenshot_url
+            req.payment_details = payload.paymentDetails or req.payment_details
+            req.reason = payload.reason or req.reason
+            db.commit()
+            db.refresh(req)
+    else:
+        if payload.utrNumber and db.query(CreditRequest.id).filter(CreditRequest.utr_number == payload.utrNumber).first():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="UTR has already been submitted")
+        req = CreditRequest(
+            user_id=current_user.id,
+            request_type="Deposit",
+            requested_amount=payload.amount,
+            order_id=order_id,
+            transaction_id=payload.transactionId,
+            upi_app=payload.upiApp,
+            utr_number=payload.utrNumber,
+            screenshot_url=payload.screenshotUrl,
+            payment_details=payload.paymentDetails,
+            reason=payload.reason,
+            status="Pending",
+        )
+        db.add(req)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            existing = db.query(CreditRequest).filter(CreditRequest.order_id == order_id).first()
+            if not existing or existing.user_id != current_user.id or existing.requested_amount != payload.amount:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="orderId is already in use")
+            req = existing
+        else:
+            created = True
+            db.refresh(req)
+    response_message = (
+        "Deposit request submitted -- an admin will review it shortly."
+        if req.status == "Pending" else
+        "Deposit request was approved and credits were added."
+        if req.status == "Approved" else
+        "Deposit request was rejected."
     )
-    db.add(req)
-    db.commit()
-    db.refresh(req)
     return _ok(
         {
             "id": f"DEP_{req.id}",
+            "orderId": req.order_id,
+            "transactionId": req.transaction_id,
+            "upiApp": req.upi_app,
             "requestedAmount": req.requested_amount,
             "reason": req.reason,
-            "status": req.status,
+            "status": req.status.upper(),
             "createdAt": shape.iso_ist(req.created_at),
         },
-        status_code=201,
-        message="Deposit request submitted -- an admin will review it shortly.",
+        status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        message=response_message,
     )
+
+
+@router.post("/wallet/deposit/verify/{orderId}")
+def verify_deposit(
+    orderId: str,
+    payload: AppDepositVerifyRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the server-side review state for this user's deposit order.
+
+    A UPI app callback is not trusted as proof of payment. Without a configured
+    acquiring-bank/payment-gateway status API, only admin review can approve a
+    deposit request and grant credits.
+    """
+    if payload.orderId != orderId:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="orderId in body must match the path")
+    req = db.query(CreditRequest).filter(
+        CreditRequest.order_id == orderId,
+        CreditRequest.user_id == current_user.id,
+        CreditRequest.request_type.ilike("deposit"),
+    ).first()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deposit order not found")
+    if req.requested_amount != payload.amount:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Amount does not match this order")
+    if payload.transactionId and req.transaction_id and payload.transactionId != req.transaction_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="transactionId does not match this order")
+
+    if req.status == "Approved":
+        result_status, result_message, ok = "SUCCESS", "Deposit was approved and credits were added.", True
+    elif req.status == "Rejected":
+        result_status, result_message, ok = "FAILED", req.admin_note or "Deposit request was rejected.", False
+    else:
+        result_status, result_message, ok = "PENDING", "Payment has not been confirmed yet. The deposit request is awaiting admin verification.", True
+    message = "Payment confirmed and wallet credited" if result_status == "SUCCESS" else (
+        "Payment failed or was rejected" if result_status == "FAILED" else "Transaction recorded. Verification is pending."
+    )
+    return {
+        "success": ok,
+        "statusCode": status.HTTP_200_OK,
+        "message": message,
+        "data": {
+            "orderId": req.order_id,
+            "status": result_status,
+            "amount": float(req.requested_amount),
+            "balance": float(current_user.balance),
+            "transactionId": req.utr_number or req.transaction_id or req.order_id,
+            "message": result_message,
+        },
+    }
 
 
 @router.post("/wallet/withdraw/request", status_code=status.HTTP_201_CREATED)

@@ -6,9 +6,10 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
-import { Textarea } from '@/components/ui/Field';
+import { Input, Select, Textarea } from '@/components/ui/Field';
 import { Icon } from '@/components/layout/icons';
-import { useSupportQueries, useReplyToQuery } from '@/hooks/useSupportQueries';
+import { useConfirm } from '@/components/ui/Feedback';
+import { useSupportQueries, useReplyToQuery, useUpdateQueryStatus, useDeleteQuery } from '@/hooks/useSupportQueries';
 import { usePermissions } from '@/hooks/usePermissions';
 
 const PRIORITY_TONE: Record<string, 'red' | 'amber' | 'slate'> = {
@@ -17,15 +18,26 @@ const PRIORITY_TONE: Record<string, 'red' | 'amber' | 'slate'> = {
   Low: 'slate',
 };
 
+const STATUS_TONE: Record<string, 'blue' | 'amber' | 'green'> = {
+  Open: 'blue',
+  Pending: 'amber',
+  Resolved: 'green',
+};
+
 export default function SupportQueriesPage() {
   const { data, isLoading, isError, error } = useSupportQueries({ limit: 100 });
   const reply = useReplyToQuery();
+  const updateStatus = useUpdateQueryStatus();
+  const deleteQuery = useDeleteQuery();
+  const confirm = useConfirm();
   const { has } = usePermissions();
   const canReply = has('support.manage');
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [message, setMessage] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | 'Open' | 'Pending'>('');
+  const [attachmentUrl, setAttachmentUrl] = useState('');
+  const [attachmentType, setAttachmentType] = useState<'image' | 'audio'>('image');
+  const [statusFilter, setStatusFilter] = useState<'' | 'Open' | 'Pending' | 'Resolved'>('');
 
   const queries = useMemo(() => {
     const items = data?.items ?? [];
@@ -36,7 +48,10 @@ export default function SupportQueriesPage() {
 
   // Selecting a different ticket (or the list refetching) shouldn't leave a
   // half-typed reply pointed at the wrong ticket.
-  useEffect(() => setMessage(''), [selected?.id]);
+  useEffect(() => {
+    setMessage('');
+    setAttachmentUrl('');
+  }, [selected?.id]);
 
   const openCount = (data?.items ?? []).filter((q) => q.status === 'Open').length;
 
@@ -62,7 +77,7 @@ export default function SupportQueriesPage() {
             <CardHeader>
               <CardTitle>Tickets</CardTitle>
               <div className="flex gap-1">
-                {(['', 'Open', 'Pending'] as const).map((s) => (
+                {(['', 'Open', 'Pending', 'Resolved'] as const).map((s) => (
                   <button
                     key={s || 'all'}
                     onClick={() => setStatusFilter(s)}
@@ -86,7 +101,7 @@ export default function SupportQueriesPage() {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-semibold text-slate-900">{q.user}</span>
-                    <Badge tone={q.status === 'Open' ? 'blue' : 'amber'}>{q.status}</Badge>
+                    <Badge tone={STATUS_TONE[q.status] ?? 'slate'}>{q.status}</Badge>
                   </div>
                   <p className="mt-0.5 truncate text-xs text-slate-600">{q.subject}</p>
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
@@ -107,7 +122,29 @@ export default function SupportQueriesPage() {
                   <CardTitle subtitle={selected.subject}>{selected.user}</CardTitle>
                   <div className="flex items-center gap-2">
                     <Badge tone={PRIORITY_TONE[selected.priority] ?? 'slate'}>{selected.priority}</Badge>
-                    <Badge tone={selected.status === 'Open' ? 'blue' : 'amber'}>{selected.status}</Badge>
+                    {canReply ? (
+                      <Select
+                        className="w-32"
+                        value={selected.status}
+                        onChange={(e) =>
+                          updateStatus.mutate({ id: selected.id, status: e.target.value as 'Open' | 'Pending' | 'Resolved' })
+                        }
+                      >
+                        <option value="Open">Open</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Resolved">Resolved</option>
+                      </Select>
+                    ) : (
+                      <Badge tone={STATUS_TONE[selected.status] ?? 'slate'}>{selected.status}</Badge>
+                    )}
+                    {canReply && (
+                      <button
+                        className="text-xs font-semibold text-red-600 hover:underline"
+                        onClick={async () => (await confirm('Delete this support ticket? This cannot be undone.')) && deleteQuery.mutate(selected.id)}
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </CardHeader>
 
@@ -121,7 +158,15 @@ export default function SupportQueriesPage() {
                             : 'bg-slate-100 text-slate-800'
                         }`}
                       >
-                        <p>{m.text}</p>
+                        {m.attachmentType === 'image' && m.attachmentUrl && (
+                          <a href={m.attachmentUrl} target="_blank" rel="noreferrer" className="block">
+                            <img src={m.attachmentUrl} alt="Attachment" className="mb-1.5 max-h-56 w-full rounded-lg object-cover" />
+                          </a>
+                        )}
+                        {m.attachmentType === 'audio' && m.attachmentUrl && (
+                          <audio controls src={m.attachmentUrl} className="mb-1.5 w-full" />
+                        )}
+                        {m.text && <p>{m.text}</p>}
                         <p className={`mt-1 text-[10px] ${m.sender === 'admin' ? 'text-brand-100' : 'text-slate-400'}`}>
                           {m.sender === 'admin' ? 'You' : selected.user} · {m.time}
                         </p>
@@ -138,16 +183,33 @@ export default function SupportQueriesPage() {
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Type a reply…"
                     />
+                    <div className="mt-2 flex gap-2">
+                      <Input
+                        className="flex-1"
+                        value={attachmentUrl}
+                        onChange={(e) => setAttachmentUrl(e.target.value)}
+                        placeholder="Optional: paste an image/voice-note URL to attach"
+                      />
+                      <Select className="w-28" value={attachmentType} onChange={(e) => setAttachmentType(e.target.value as 'image' | 'audio')}>
+                        <option value="image">Image</option>
+                        <option value="audio">Voice</option>
+                      </Select>
+                    </div>
                     {reply.isError && <p className="mt-2 text-xs text-red-600">{(reply.error as Error).message}</p>}
                     <Button
                       className="mt-2"
                       size="sm"
                       loading={reply.isPending}
-                      disabled={!message.trim()}
+                      disabled={!message.trim() && !attachmentUrl.trim()}
                       onClick={() => {
                         reply.mutate(
-                          { id: selected.id, message: message.trim() },
-                          { onSuccess: () => setMessage('') }
+                          {
+                            id: selected.id,
+                            message: message.trim() || undefined,
+                            attachmentUrl: attachmentUrl.trim() || undefined,
+                            attachmentType: attachmentUrl.trim() ? attachmentType : undefined,
+                          },
+                          { onSuccess: () => { setMessage(''); setAttachmentUrl(''); } }
                         );
                       }}
                     >

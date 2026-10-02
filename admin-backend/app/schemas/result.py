@@ -17,6 +17,7 @@ class ResultUpsert(BaseModel):
     close_ank: str | None = None
     single_result: str | None = None
     publish: bool = False
+    selection_overrides: list["ResultSelectionOverride"] = Field(default_factory=list)
 
 
 class ResultCorrection(BaseModel):
@@ -35,6 +36,12 @@ class ResultPreviewRequest(BaseModel):
     open_ank: str | None = None
     close_panna: str | None = None
     close_ank: str | None = None
+    selection_overrides: list["ResultSelectionOverride"] = Field(default_factory=list)
+
+
+class ResultSelectionOverride(BaseModel):
+    entry_id: int
+    selection: str = Field(min_length=1, max_length=10)
 
 
 class ResultPreviewWinner(BaseModel):
@@ -51,6 +58,10 @@ class ResultPreviewWinner(BaseModel):
     potentialPayout: int
 
 
+class ResultPreviewReviewRow(ResultPreviewWinner):
+    isWinner: bool
+
+
 class ResultPreviewOut(BaseModel):
     openPanna: str | None
     openAnk: str | None
@@ -65,6 +76,7 @@ class ResultPreviewOut(BaseModel):
     totalStakeAtRisk: int
     totalPotentialPayout: int
     winners: list[ResultPreviewWinner]
+    reviewRows: list[ResultPreviewReviewRow]
 
 
 class MarketResultOut(BaseModel):

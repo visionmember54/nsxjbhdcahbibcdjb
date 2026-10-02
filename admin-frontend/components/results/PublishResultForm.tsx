@@ -64,6 +64,7 @@ export default function PublishResultForm() {
   const [closeAnk, setCloseAnk] = useState('');
   const [singleResult, setSingleResult] = useState('');
   const [publish, setPublish] = useState(true);
+  const [selectionOverrides, setSelectionOverrides] = useState<Record<number, string>>({});
 
   const selectedMarket = markets.find((m) => m.id === marketId);
   const isStarline = selectedMarket?.category === 'STARLINE';
@@ -72,8 +73,9 @@ export default function PublishResultForm() {
   // A stale preview for a different market/slot is worse than no preview.
   useEffect(() => {
     previewResult.reset();
+    setSelectionOverrides({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [marketId, slotId]);
+  }, [marketId, slotId, openPanna, openAnk, closePanna, closeAnk]);
 
   function reset() {
     setOpenPanna('');
@@ -81,11 +83,25 @@ export default function PublishResultForm() {
     setClosePanna('');
     setCloseAnk('');
     setSingleResult('');
+    setSelectionOverrides({});
     previewResult.reset();
   }
 
   const canPreview = !!marketId && (!!openPanna || !!openAnk || !!closePanna || !!closeAnk);
   const preview = previewResult.data;
+
+  function refreshPreview(overrides: Record<number, string>) {
+    if (!marketId) return;
+    previewResult.mutate({
+      market_id: Number(marketId),
+      slot_id: isStarline ? Number(slotId) || null : null,
+      open_panna: openPanna || null,
+      open_ank: !openPanna && openAnk ? openAnk : null,
+      close_panna: closePanna || null,
+      close_ank: !closePanna && closeAnk ? closeAnk : null,
+      selection_overrides: Object.entries(overrides).map(([entry_id, selection]) => ({ entry_id: Number(entry_id), selection })),
+    });
+  }
 
   return (
     <form
@@ -102,6 +118,7 @@ export default function PublishResultForm() {
           close_ank: !closePanna && closeAnk ? closeAnk : null,
           single_result: singleResult || null,
           publish,
+          selection_overrides: publish ? Object.entries(selectionOverrides).map(([entry_id, selection]) => ({ entry_id: Number(entry_id), selection })) : [],
         });
         reset();
       }}
@@ -221,20 +238,22 @@ export default function PublishResultForm() {
             </p>
           )}
 
-          {preview.winnersCount > 0 ? (
+          {preview.reviewRows.length > 0 ? (
             <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <p className="border-b border-slate-100 px-3 py-2 text-xs text-slate-500">Review the winners and adjust a number if needed. Edits are recorded in the admin log.</p>
               <Table>
                 <THead>
                   <Tr>
                     <Th>User</Th>
                     <Th>Game</Th>
-                    <Th>Selection</Th>
+                    <Th>Selected number</Th>
+                    <Th>Status</Th>
                     <Th>Credits</Th>
                     <Th>Payout</Th>
                   </Tr>
                 </THead>
                 <TBody>
-                  {preview.winners.map((w) => (
+                  {preview.reviewRows.map((w) => (
                     <Tr key={w.entryId}>
                       <Td className="font-medium text-slate-900">
                         {w.userName}
@@ -243,17 +262,44 @@ export default function PublishResultForm() {
                       <Td>
                         <Badge tone="green">{w.gameType.replace('_', ' ')}</Badge>
                       </Td>
-                      <Td className="font-mono text-xs">{w.selection}</Td>
+                      <Td>
+                        <Input
+                          aria-label={`Winning number for ${w.userName}`}
+                          className="w-28 font-mono"
+                          required
+                          value={selectionOverrides[w.entryId] ?? w.selection}
+                          maxLength={10}
+                          onChange={(e) => setSelectionOverrides((current) => ({ ...current, [w.entryId]: e.target.value }))}
+                          onBlur={(e) => {
+                            const next = { ...selectionOverrides, [w.entryId]: e.target.value.trim() };
+                            setSelectionOverrides(next);
+                            refreshPreview(next);
+                          }}
+                        />
+                      </Td>
+                      <Td>
+                        <Badge tone={w.isWinner ? 'green' : 'amber'}>{w.isWinner ? 'Winner' : 'No longer winning'}</Badge>
+                      </Td>
                       <Td>{w.credits.toLocaleString()}</Td>
-                      <Td className="font-semibold text-emerald-600">{w.potentialPayout.toLocaleString()}</Td>
+                      <Td className={w.isWinner ? 'font-semibold text-emerald-600' : 'text-slate-400'}>
+                        {w.isWinner ? w.potentialPayout.toLocaleString() : '—'}
+                      </Td>
                     </Tr>
                   ))}
                 </TBody>
               </Table>
+              {Object.keys(selectionOverrides).length > 0 && (
+                <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
+                  <span>Winner totals recalculate when you leave an edited number.</span>
+                  <Button type="button" variant="secondary" loading={previewResult.isPending} onClick={() => refreshPreview(selectionOverrides)}>Recalculate winners</Button>
+                </div>
+              )}
             </div>
           ) : (
             <p className="mt-3 text-xs text-slate-500">
-              {preview.resolvableEntries === 0
+              {preview.winnersCount === 0 && Object.keys(selectionOverrides).length > 0
+                ? 'The edited selections no longer match the result. Edit them again above or restore the winning number.'
+                : preview.resolvableEntries === 0
                 ? 'No pending simulations for this market/slot yet.'
                 : `No one wins with this result — ${preview.resolvableEntries} pending ${preview.resolvableEntries === 1 ? 'entry' : 'entries'} would lose.`}
             </p>

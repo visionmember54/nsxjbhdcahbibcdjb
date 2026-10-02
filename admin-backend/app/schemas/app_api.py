@@ -1,9 +1,8 @@
 """Request shapes for the /api/v1/* mobile-app compatibility layer.
 
-These mirror the payloads the Flutter app's repositories actually send
-(config/api_endpoints.dart + repositories/*.dart), not the admin schemas.
-Everything here stays within the existing virtual Learning Credits model --
-there is deliberately no deposit/withdrawal/bank-detail schema in this file.
+These mirror payloads used by the Flutter app and its /api/v1 compatibility
+routes, not the admin schemas. Deposit order metadata supports server-side
+status tracking; it is not proof of bank settlement.
 """
 from __future__ import annotations
 
@@ -12,12 +11,11 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, Field, model_validator
 
+
 _PHONE_SHAPE_RE = re.compile(r"^\+?[\d\s\-()]+$")
 
 
 def _validate_otp_phone(value: str) -> str:
-    """A real SMS goes out through the relay device for every one of these --
-    reject obviously-malformed input before it wastes a relay send."""
     value = value.strip()
     if not _PHONE_SHAPE_RE.match(value):
         raise ValueError("Phone number may only contain digits, spaces, dashes, parentheses, and a leading +")
@@ -54,8 +52,6 @@ class PhoneTokenLoginRequest(BaseModel):
 
 class SendRegisterOtpRequest(BaseModel):
     phone: OtpPhone
-    # Present -> delivered as a push notification (the app already has its own
-    # device token before any account exists). Absent -> dev-mode: logged only.
     fcmToken: str | None = None
     appName: str | None = None
 
@@ -88,8 +84,6 @@ class ForgotPasswordRequestOtp(BaseModel):
 
 class SendLoginOtpRequest(BaseModel):
     phoneNumber: OtpPhone
-    # No longer needed for delivery (OTP now goes to the fixed relay device),
-    # kept accepted for forward-compat with clients that still send it.
     fcmToken: str | None = None
     appName: str | None = None
 
@@ -208,9 +202,6 @@ class SupportChatRequest(BaseModel):
     message: str | None = Field(default=None, min_length=1)
     sessionId: str | None = None
     language: str | None = None
-    # The file itself goes straight from the client to Firebase Storage; this
-    # is just the resulting download URL, same pattern as credit-request
-    # screenshots (screenshotUrl).
     attachmentUrl: str | None = None
     attachmentType: Literal["image", "audio"] | None = None
 
@@ -239,10 +230,20 @@ class AppCreditRequestCreate(BaseModel):
 class AppDepositRequest(BaseModel):
     requestType: str = Field(default="Deposit")
     amount: int = Field(gt=0, le=1_000_000)
+    orderId: str | None = Field(default=None, min_length=8, max_length=64)
+    transactionId: str | None = Field(default=None, max_length=100)
+    upiApp: str | None = Field(default=None, max_length=32)
     utrNumber: str | None = Field(default=None, max_length=100)
     paymentDetails: str | None = Field(default=None)
     screenshotUrl: str | None = Field(default=None)
     reason: str | None = Field(default="Deposit via UPI", max_length=500)
+
+
+class AppDepositVerifyRequest(BaseModel):
+    orderId: str = Field(min_length=8, max_length=64)
+    amount: int = Field(gt=0, le=1_000_000)
+    transactionId: str | None = Field(default=None, max_length=100)
+    upiApp: str | None = Field(default=None, max_length=32)
 
 
 class AppWithdrawRequest(BaseModel):

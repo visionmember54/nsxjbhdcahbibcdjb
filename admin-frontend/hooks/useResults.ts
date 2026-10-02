@@ -41,6 +41,7 @@ export function useUpsertResult() {
       close_ank?: string | null;
       single_result?: string | null;
       publish: boolean;
+      selection_overrides?: { entry_id: number; selection: string }[];
     }) => api.post<MarketResult>('/admin/results', payload),
     onSuccess: () => invalidateResults(qc),
   });
@@ -55,6 +56,7 @@ export function usePreviewResult() {
       open_ank?: string | null;
       close_panna?: string | null;
       close_ank?: string | null;
+      selection_overrides?: { entry_id: number; selection: string }[];
     }) => api.post<ResultPreview>('/admin/results/preview', payload),
   });
 }

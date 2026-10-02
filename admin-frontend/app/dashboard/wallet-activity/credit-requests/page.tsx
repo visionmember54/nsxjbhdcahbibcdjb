@@ -128,6 +128,9 @@ function CreditRequestsPageInner() {
                     {r.requestType.toLowerCase() === 'withdrawal' ? '-' : '+'}{r.requestedAmount.toLocaleString()}
                   </Td>
                   <Td className="max-w-[200px] text-xs text-slate-600 space-y-1">
+                    {r.orderId && <div><span className="font-semibold">Order:</span> {r.orderId}</div>}
+                    {r.transactionId && <div><span className="font-semibold">App ref:</span> {r.transactionId}</div>}
+                    {r.upiApp && <div><span className="font-semibold">UPI app:</span> {r.upiApp}</div>}
                     {r.utrNumber && <div><span className="font-semibold">UTR:</span> {r.utrNumber}</div>}
                     {r.paymentDetails && <div><span className="font-semibold">To:</span> {r.paymentDetails}</div>}
                     {isHttpUrl(r.screenshotUrl) && (
@@ -136,7 +139,7 @@ function CreditRequestsPageInner() {
                       </a>
                     )}
                     {r.reason && <div className="truncate" title={r.reason}>{r.reason}</div>}
-                    {!r.utrNumber && !r.paymentDetails && !isHttpUrl(r.screenshotUrl) && !r.reason && '—'}
+                    {!r.orderId && !r.transactionId && !r.upiApp && !r.utrNumber && !r.paymentDetails && !isHttpUrl(r.screenshotUrl) && !r.reason && '—'}
                   </Td>
                   <Td>
                     <Badge tone={STATUS_TONE[r.status]}>{r.status}</Badge>

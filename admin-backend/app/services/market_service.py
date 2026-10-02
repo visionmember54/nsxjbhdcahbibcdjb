@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import CUTOFF_PASSED, MARKET_CLOSED, SLOT_CLOSED, AppError
 from app.models.market import Market, StarlineSlot
-from app.models.market_result import MarketResult
 
 # Market status state machine
 VALID_TRANSITIONS: dict[str, set[str]] = {
@@ -117,47 +116,23 @@ def effective_market_status(market: Market) -> str:
     return "OPEN"
 
 
-def declared_result_today(db: Session, market: Market) -> MarketResult | None:
-    """Today's Published/Corrected result row for this market (Matka-shaped, no
-    slot), if one exists yet. Used to auto-close a session the instant its
-    number is declared, with no per-market schedule config required."""
-    today = datetime.now(ZoneInfo(market.timezone or "Asia/Kolkata")).date().isoformat()
-    return (
-        db.query(MarketResult)
-        .filter(
-            MarketResult.market_id == market.id,
-            MarketResult.slot_id.is_(None),
-            MarketResult.result_date == today,
-            MarketResult.status.in_(("Published", "Corrected")),
-        )
-        .order_by(MarketResult.id.desc())
-        .first()
-    )
-
-
-def assert_market_open(db: Session, market: Market, stage: str | None = None) -> None:
+def assert_market_open(market: Market, stage: str | None = None) -> None:
+    """Whether a result has been declared has no bearing on this -- only the
+    clock does. An admin can publish today's Open result early (or late) for
+    operational reasons without that action itself opening or closing either
+    leg; Open stays biddable until opening_time passes and Close stays
+    biddable until closing_time passes, full stop."""
     if effective_market_status(market) != "OPEN":
         raise AppError(MARKET_CLOSED, f"Market '{market.name}' is not open")
 
-    result = declared_result_today(db, market)
-
     if stage == "CLOSE":
-        # Close-session bets stop the instant today's Close number is declared, or at
-        # closing_time, whichever comes first.
-        if result and result.close_panna:
-            raise AppError(CUTOFF_PASSED, f"Market '{market.name}' Close result has already been declared for today")
         if _cutoff_passed(market.closing_time, market.timezone):
             raise AppError(CUTOFF_PASSED, f"Market '{market.name}' cutoff has passed")
         return
 
     # Open-session bets (and jodi/sangam, which need the open result): stop at the
     # market's own Open time -- automatic, no per-market schedule config needed --
-    # or at an explicit cutoff_time if the admin has set one to override it. Also
-    # stops the instant today's Open number is declared, in case that happens
-    # early, but the clock deadline below is what fires on a normal day even if
-    # nobody has declared anything yet.
-    if result and result.open_panna:
-        raise AppError(CUTOFF_PASSED, f"Market '{market.name}' Open result has already been declared for today")
+    # or at an explicit cutoff_time if the admin has set one to override it.
     if _cutoff_passed(market.cutoff_time or market.opening_time, market.timezone):
         raise AppError(CUTOFF_PASSED, f"Market '{market.name}' cutoff has passed")
 

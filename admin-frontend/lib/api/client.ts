@@ -13,10 +13,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (res.status === 401 && typeof window !== 'undefined') {
-    if (window.location.pathname !== '/login') {
-      const from = encodeURIComponent(window.location.pathname + window.location.search);
-      window.location.href = `/login?expired=1&from=${from}`;
-    }
+    window.location.href = '/login';
     throw new ApiError(401, 'Unauthorized');
   }
 

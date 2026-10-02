@@ -11,6 +11,7 @@ from app.schemas.result import MarketResultOut, ResultCorrection, ResultPreviewO
 from app.services import result_service
 from datetime import datetime, timezone
 from app.models.audit import AuditLog
+from app.models.simulation import SimulationEntry
 
 router = APIRouter(prefix="/admin/results", tags=["results"])
 
@@ -61,6 +62,7 @@ async def preview_result(
         db, market_id=payload.market_id, slot_id=payload.slot_id,
         open_panna=payload.open_panna, open_ank=payload.open_ank,
         close_panna=payload.close_panna, close_ank=payload.close_ank,
+        selection_overrides=[item.model_dump() for item in payload.selection_overrides],
     )
     return ResultPreviewOut(**preview)
 
@@ -71,14 +73,29 @@ async def upsert_result(
     current_admin: Admin = Depends(require_permission("results.manage")),
     db: Session = Depends(get_db),
 ):
+    original_selections = {}
+    if payload.publish and payload.selection_overrides:
+        ids = [item.entry_id for item in payload.selection_overrides]
+        original_selections = {
+            entry.id: entry.selection
+            for entry in db.query(SimulationEntry).filter(SimulationEntry.id.in_(ids)).all()
+        }
     result = result_service.upsert_result(
         db, market_id=payload.market_id, slot_id=payload.slot_id, result_date=payload.date,
         open_panna=payload.open_panna, open_ank=payload.open_ank, close_panna=payload.close_panna,
         close_ank=payload.close_ank, single_result=payload.single_result, publish=payload.publish,
         admin_id=current_admin.id,
+        selection_overrides=[item.model_dump() for item in payload.selection_overrides],
     )
     action = "result_published" if payload.publish else "result_draft_saved"
     db.add(AuditLog(actor=current_admin.name, action=action, details=f"Result for market #{payload.market_id} on {payload.date}", created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
+    changed_selections = [
+        item for item in payload.selection_overrides
+        if original_selections.get(item.entry_id) != item.selection.strip()
+    ]
+    if payload.publish and changed_selections:
+        edits = ", ".join(f"entry #{item.entry_id}: {original_selections.get(item.entry_id, '—')} -> {item.selection.strip()}" for item in changed_selections)
+        db.add(AuditLog(actor=current_admin.name, action="result_winner_selection_adjusted", details=f"Result for market #{payload.market_id} on {payload.date}; {edits}", created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
     db.commit()
     db.refresh(result)
     return _result_out(result)
@@ -128,10 +145,12 @@ async def delete_result(
     current_admin: Admin = Depends(require_permission("results.delete")),
     db: Session = Depends(get_db),
 ):
-    """Single-record delete only -- there is no bulk-delete-by-market endpoint."""
-    result = db.get(MarketResult, result_id)
-    if not result:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Result not found")
-    db.delete(result)
-    db.add(AuditLog(actor=current_admin.name, action="result_deleted", details=f"Result #{result_id} deleted", created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
+    """Single-record delete only -- there is no bulk-delete-by-market endpoint.
+    Any payouts already made against this result are clawed back and affected
+    entries revert to Pending; see result_service.delete_result."""
+    reversed_count = result_service.delete_result(db, result_id=result_id, admin_id=current_admin.id)
+    details = f"Result #{result_id} deleted"
+    if reversed_count:
+        details += f"; {reversed_count} payout(s) reversed and entries reverted to Pending"
+    db.add(AuditLog(actor=current_admin.name, action="result_deleted", details=details, created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
     db.commit()

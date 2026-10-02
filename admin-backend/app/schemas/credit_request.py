@@ -23,6 +23,9 @@ class CreditRequestOut(BaseModel):
     userPhone: str
     requestedAmount: int
     requestType: str
+    orderId: str | None = None
+    transactionId: str | None = None
+    upiApp: str | None = None
     utrNumber: str | None = None
     screenshotUrl: str | None = None
     paymentDetails: str | None = None

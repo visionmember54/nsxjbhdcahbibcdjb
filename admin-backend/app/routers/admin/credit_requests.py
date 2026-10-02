@@ -20,7 +20,9 @@ router = APIRouter(prefix="/admin/credit-requests", tags=["credit-requests"])
 def _out(req: CreditRequest, user: User) -> CreditRequestOut:
     return CreditRequestOut(
         id=req.id, userId=req.user_id, userName=user.name, userPhone=user.phone,
-        requestedAmount=req.requested_amount, requestType=req.request_type, utrNumber=req.utr_number, screenshotUrl=req.screenshot_url, paymentDetails=req.payment_details, reason=req.reason, status=req.status,
+        requestedAmount=req.requested_amount, requestType=req.request_type, orderId=req.order_id,
+        transactionId=req.transaction_id, upiApp=req.upi_app, utrNumber=req.utr_number,
+        screenshotUrl=req.screenshot_url, paymentDetails=req.payment_details, reason=req.reason, status=req.status,
         adminNote=req.admin_note, reviewedByAdminId=req.reviewed_by_admin_id,
         reviewedAt=req.reviewed_at, createdAt=req.created_at,
     )
@@ -63,10 +65,11 @@ async def approve_credit_request(
             db, user=user, type="grant", amount=req.requested_amount,
             reference_type="credit_request", reference_id=str(req.id),
             created_by_admin_id=current_admin.id,
-            note=f"Deposit request #{req.id} approved" + (f": {req.reason}" if req.reason else ""),
+            note=f"Approved deposit request: {req.reason}" if req.reason else "Approved deposit request",
         )
-    # A withdrawal was already deducted as a hold when requested, so approving it moves no money and
-    # writes no ledger row; the hold row's linked request status is what shows it as settled.
+    # Withdrawal funds were already held when the request was submitted.
+    # The linked hold row reads the current CreditRequest status, so approval
+    # needs no extra (zero-amount) ledger marker.
 
     req.status = "Approved"
     req.admin_note = payload.admin_note
@@ -103,7 +106,7 @@ async def reject_credit_request(
             db, user=user, type="refund", amount=req.requested_amount,
             reference_type="credit_request", reference_id=str(req.id),
             created_by_admin_id=current_admin.id,
-            note=f"Withdrawal request #{req.id} rejected, amount refunded" + (f": {payload.admin_note}" if payload.admin_note else ""),
+            note=f"Refunded rejected withdrawal request",
         )
 
     req.status = "Rejected"

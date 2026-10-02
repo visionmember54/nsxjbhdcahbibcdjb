@@ -36,6 +36,9 @@ class SimulationEntry(Base):
     game_type_id: Mapped[int] = mapped_column(ForeignKey("game_types.id"))
     stage: Mapped[str | None] = mapped_column(String(10), nullable=True)
     selection: Mapped[str] = mapped_column(String(10))
+    # Admin-only winning number adjustment used during result publication.
+    # Keep the user's submitted selection intact for their history and ledger.
+    result_selection_override: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # Required for HALF_SANGAM so its two payout directions remain explicit.
     game_variant: Mapped[str | None] = mapped_column(String(30), nullable=True)
     simulated_credits: Mapped[int] = mapped_column(Integer)

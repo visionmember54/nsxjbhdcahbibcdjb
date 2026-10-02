@@ -11,7 +11,7 @@ from datetime import date, datetime, time as time_, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
-from app.services.market_service import declared_result_today, effective_market_status
+from app.services.market_service import effective_market_status
 
 from app.models.game_type import GameType
 from app.models.market import Market, StarlineSlot
@@ -137,7 +137,7 @@ def latest_published_result(db: Session, market_id: int, slot_id: int | None = N
     return query.order_by(MarketResult.result_date.desc(), MarketResult.id.desc()).first()
 
 
-def market_session_status(db: Session, market: Market) -> tuple[str, bool, bool, bool]:
+def market_session_status(market: Market) -> tuple[str, bool, bool, bool]:
     """-> (sessionStatus, isOpeningLive, isClosingLive, isBiddingAllowed).
 
     Mirrors market_service.assert_market_open exactly, so the app's displayed
@@ -150,15 +150,12 @@ def market_session_status(db: Session, market: Market) -> tuple[str, bool, bool,
         return "CLOSED_TODAY", False, False, False
 
     now = datetime.now(ZoneInfo(market.timezone or "Asia/Kolkata")).time()
-    result = declared_result_today(db, market)
-    open_declared = bool(result and result.open_panna)
-    close_declared = bool(result and result.close_panna)
     cutoff = market.cutoff_time or market.opening_time
     closing = market.closing_time
 
-    if not open_declared and (not cutoff or now < cutoff):
+    if not cutoff or now < cutoff:
         return "OPENING", True, False, True
-    if not close_declared and closing and now < closing:
+    if closing and now < closing:
         return "CLOSING", False, True, True
     return "CLOSED_TODAY", False, False, False
 

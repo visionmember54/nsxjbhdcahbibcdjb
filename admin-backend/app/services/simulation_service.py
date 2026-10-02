@@ -50,7 +50,7 @@ def _assert_market_or_slot_open(db: Session, market: Market, slot_id: int | None
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Slot not found on this market")
         assert_slot_open(slot, market)
         return
-    assert_market_open(db, market, stage)
+    assert_market_open(market, stage)
 
 
 def submit_bulk_simulation(

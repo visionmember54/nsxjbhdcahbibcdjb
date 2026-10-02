@@ -88,3 +88,42 @@ def test_result_delete_is_single_record_only(client, auth_headers):
 
     remaining = client.get("/admin/results?limit=50", headers=auth_headers).json()
     assert result["id"] not in [r["id"] for r in remaining["items"]]
+
+
+def test_delete_reverses_payout_and_reverts_entry_to_pending(client, auth_headers, user_headers):
+    mid = _market_id(client, auth_headers)
+    client.post("/simulations", headers=user_headers, json={"market_id": mid, "game_type": "SINGLE", "stage": "OPEN", "value": "1", "credits": 100})
+
+    result = client.post("/admin/results", headers=auth_headers, json={"market_id": mid, "date": "2026-01-06", "open_panna": "128", "publish": True}).json()
+    balance_after_win = client.get("/auth/me", headers=user_headers).json()["balance"]
+
+    entries = client.get("/simulations/my?limit=10", headers=user_headers).json()["items"]
+    entry = next(e for e in entries if e["selection"] == "1")
+    assert entry["status"] == "Won"
+
+    resp = client.delete(f"/admin/results/{result['id']}", headers=auth_headers)
+    assert resp.status_code == 204
+
+    entries = client.get("/simulations/my?limit=10", headers=user_headers).json()["items"]
+    entry = next(e for e in entries if e["selection"] == "1")
+    assert entry["status"] == "Pending"
+
+    balance_after_delete = client.get("/auth/me", headers=user_headers).json()["balance"]
+    assert balance_after_delete < balance_after_win
+
+    remaining = client.get("/admin/results?limit=50", headers=auth_headers).json()
+    assert result["id"] not in [r["id"] for r in remaining["items"]]
+
+
+def test_delete_result_not_found_returns_404(client, auth_headers):
+    resp = client.delete("/admin/results/999999", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+def test_cannot_delete_a_result_that_was_already_corrected(client, auth_headers):
+    mid = _market_id(client, auth_headers)
+    result = client.post("/admin/results", headers=auth_headers, json={"market_id": mid, "date": "2026-01-07", "open_panna": "128", "publish": True}).json()
+    client.post(f"/admin/results/{result['id']}/correct", headers=auth_headers, json={"open_panna": "222", "reason": "fix"})
+
+    resp = client.delete(f"/admin/results/{result['id']}", headers=auth_headers)
+    assert resp.status_code == 400

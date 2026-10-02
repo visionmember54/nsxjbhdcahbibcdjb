@@ -10,7 +10,7 @@ from app.models.admin import Admin
 from app.models.user import User
 from app.models.support import SupportMessage, SupportQuery
 from app.schemas.common import Page, PageParams
-from app.schemas.support import QueryCreate, QueryMessageOut, ReplyCreate, SupportQueryOut
+from app.schemas.support import QueryCreate, QueryMessageOut, ReplyCreate, StatusUpdate, SupportQueryOut
 from datetime import datetime, timezone
 from app.models.audit import AuditLog
 from app.services import app_api_service as shape
@@ -87,3 +87,41 @@ async def reply_to_query(
     db.refresh(query)
     user = db.get(User, query.user_id)
     return _query_out(db, query, user.name if user else "")
+
+
+@router.patch("/{query_id}/status", response_model=SupportQueryOut)
+async def update_query_status(
+    query_id: int,
+    payload: StatusUpdate,
+    current_admin: Admin = Depends(require_permission("support.manage")),
+    db: Session = Depends(get_db),
+):
+    """Lets an admin mark a ticket Open/Pending/Resolved directly, without
+    needing to send a reply first just to move it off the queue."""
+    query = db.get(SupportQuery, query_id)
+    if not query:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
+
+    query.status = payload.status
+    query.updated_at = shape.now_ist().strftime("%Y-%m-%d %H:%M:%S")
+    db.add(AuditLog(actor=current_admin.name, action="support_status_updated", details=f"Ticket #{query_id} status set to {payload.status}", created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
+    db.commit()
+    db.refresh(query)
+    user = db.get(User, query.user_id)
+    return _query_out(db, query, user.name if user else "")
+
+
+@router.delete("/{query_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_query(
+    query_id: int,
+    current_admin: Admin = Depends(require_permission("support.manage")),
+    db: Session = Depends(get_db),
+):
+    query = db.get(SupportQuery, query_id)
+    if not query:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
+
+    message_count = db.query(SupportMessage).filter(SupportMessage.query_id == query_id).delete()
+    db.delete(query)
+    db.add(AuditLog(actor=current_admin.name, action="support_ticket_deleted", details=f"Ticket #{query_id} deleted ({message_count} message(s))", created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
+    db.commit()

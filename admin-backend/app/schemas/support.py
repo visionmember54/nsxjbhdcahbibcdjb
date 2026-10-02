@@ -37,6 +37,10 @@ class ReplyCreate(BaseModel):
         return self
 
 
+class StatusUpdate(BaseModel):
+    status: Literal["Open", "Pending", "Resolved"]
+
+
 class SupportQueryOut(BaseModel):
     id: int
     user: str
