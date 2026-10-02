@@ -34,3 +34,20 @@ export function useReplyToQuery() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['supportQueries'] }),
   });
 }
+
+export function useUpdateQueryStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: number; status: 'Open' | 'Pending' | 'Resolved' }) =>
+      api.patch<SupportQuery>(`/admin/queries/${id}/status`, { status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['supportQueries'] }),
+  });
+}
+
+export function useDeleteQuery() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete<void>(`/admin/queries/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['supportQueries'] }),
+  });
+}
