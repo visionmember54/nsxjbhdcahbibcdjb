@@ -1212,6 +1212,13 @@ def deposit_initiate(payload: AppDepositRequest, current_user: User = Depends(ge
         if req.status == "Approved" else
         "Deposit request was rejected."
     )
+    payment_status = {
+        "APPROVED": "SUCCESS",
+        "SUCCESS": "SUCCESS",
+        "COMPLETED": "SUCCESS",
+        "REJECTED": "FAILED",
+        "FAILED": "FAILED",
+    }.get((req.status or "").strip().upper(), "PENDING")
     return _ok(
         {
             "id": f"DEP_{req.id}",
@@ -1221,6 +1228,7 @@ def deposit_initiate(payload: AppDepositRequest, current_user: User = Depends(ge
             "requestedAmount": req.requested_amount,
             "reason": req.reason,
             "status": req.status.upper(),
+            "paymentStatus": payment_status,
             "createdAt": shape.iso_ist(req.created_at),
         },
         status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
