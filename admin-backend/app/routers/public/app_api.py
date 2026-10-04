@@ -1382,7 +1382,7 @@ def list_my_credit_requests(current_user: User = Depends(get_current_user), db: 
         db.query(CreditRequest)
         .filter(CreditRequest.user_id == current_user.id)
         .order_by(CreditRequest.id.desc())
-        .limit(50)
+        .limit(5)
         .all()
     )
     return _ok(
