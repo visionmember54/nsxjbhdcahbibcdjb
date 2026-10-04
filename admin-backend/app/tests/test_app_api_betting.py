@@ -99,6 +99,8 @@ def test_starline_slots_carry_their_own_market_name_when_multiple_exist(client):
     assert by_time["12:00 PM"]["marketName"] == "Starline"
     assert by_time["2:00 PM"]["marketName"] == "MADHUR STARLINE"
     assert by_time["12:00 PM"]["marketId"] != by_time["2:00 PM"]["marketId"]
+    assert by_time["12:00 PM"]["slotName"] == "12:00 PM"
+    assert by_time["2:00 PM"]["slotName"] == "2:00 PM"
 
 
 def test_starline_bet_is_stored_on_the_slot_and_shows_in_history(client, user_headers):

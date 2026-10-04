@@ -74,13 +74,24 @@ export default function OverviewPage() {
             />
           </div>
 
-          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
             <Link href="/dashboard/markets" className="block">
               <StatTile label="Open Markets" value={data.stats.openMarkets} icon="market" tone="emerald" />
             </Link>
             <Link href="/dashboard/results/pending" className="block">
               <StatTile label="Pending Results" value={data.stats.pendingResults} icon="clock" tone="amber" />
             </Link>
+            <StatTileBreakdown
+              label="Support Tickets"
+              value={data.stats.openSupportTickets + data.stats.pendingSupportTickets}
+              icon="support"
+              tone={data.stats.openSupportTickets > 0 ? 'red' : 'amber'}
+              href="/dashboard/support/queries"
+              breakdown={[
+                { label: 'Open (awaiting reply)', value: data.stats.openSupportTickets, href: '/dashboard/support/queries', valueClassName: 'text-red-600' },
+                { label: 'Pending (replied)', value: data.stats.pendingSupportTickets, href: '/dashboard/support/queries', valueClassName: 'text-amber-600' },
+              ]}
+            />
             <StatTileBreakdown
               label="Starline Slots"
               value={data.stats.starlineTotalSlots}

@@ -455,6 +455,30 @@ def config_game_rates(db: Session = Depends(get_db)):
     return _ok({"rates": rows}, message="Rates loaded")
 
 
+@router.get("/support/contact")
+def support_contact(db: Session = Depends(get_db)):
+    """One dedicated place for every way to reach support, plus the FAQ list
+    -- rather than a subset of this scattered across home/dashboard and
+    config/bootstrap. All of it is admin-editable from Support > Contact &
+    WhatsApp and Support > FAQ."""
+    settings = {row.key: row.value for row in db.query(SiteSetting).all()}
+    faqs = db.query(FAQ).filter(FAQ.enabled.is_(True)).order_by(FAQ.display_order).all()
+    return _ok(
+        {
+            "phone": settings.get("support_phone", ""),
+            "whatsapp": settings.get("support_whatsapp", ""),
+            "telegram": settings.get("support_telegram", ""),
+            "email": settings.get("support_email", ""),
+            "shareUrl": settings.get("app_share_url", ""),
+            "faqs": [
+                {"id": f.id, "question": f.question, "answer": f.answer}
+                for f in faqs
+            ],
+        },
+        message="Support contact info loaded",
+    )
+
+
 # --- Markets --------------------------------------------------------------
 
 @router.get("/markets/live-results")
@@ -663,6 +687,7 @@ def starline_slots(db: Session = Depends(get_db)):
             out.append(
                 {
                     "slotId": str(slot.id),
+                    "slotName": slot.slot_name,
                     "marketId": str(market.id),
                     "marketName": market.name,
                     "timeLabel": shape.format_time(slot.start_time),
