@@ -13,7 +13,7 @@ from app.core.errors import AppError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 request_logger = logging.getLogger("app.requests")
-from app.routers.admin import admins, audit_logs, auth, content, credit_requests, credits, dashboard, game_type_configs, game_types, market_categories, markets, rates, reports, results, roles, simulations, starline, support, users
+from app.routers.admin import admins, audit_logs, auth, content, credit_requests, credits, dashboard, game_type_configs, game_types, market_categories, markets, rates, reports, results, roles, search, simulations, starline, support, users
 from app.routers.public import content as public_content
 from app.routers.public import gali_disawar as public_gali_disawar
 from app.routers.public import game_types as public_game_types
@@ -160,6 +160,7 @@ app.add_middleware(
 # --- Admin (protected, /admin/*) ---
 app.include_router(auth.router)
 app.include_router(dashboard.router)
+app.include_router(search.router)
 app.include_router(admins.router)
 app.include_router(roles.router)
 app.include_router(roles.permissions_router)
@@ -168,6 +169,7 @@ app.include_router(market_categories.router)
 app.include_router(game_types.router)
 app.include_router(markets.router)
 app.include_router(game_type_configs.router)
+app.include_router(game_type_configs.bulk_router)
 app.include_router(starline.router)
 app.include_router(rates.router)
 app.include_router(credits.router)

@@ -65,13 +65,30 @@ def _paana_digit_columns(game_type_code: str, stage: str | None, selection: str,
     return columns
 
 
+# Half Sangam never carries a real stage (it only resolves once both open and
+# close are published), so entry.stage is always None for it -- this derives
+# an Open/Close label the same way the app-facing history does, from which
+# side carries the panna vs the ank.
+_HALF_SANGAM_DISPLAY_STAGE: dict[str | None, str] = {
+    "OPEN_ANK_CLOSE_PANNA": "OPEN",
+    "OPEN_PANNA_CLOSE_ANK": "CLOSE",
+}
+
+
+def _display_stage(game_type_code: str, stage: str | None, game_variant: str | None) -> str | None:
+    if game_type_code == "HALF_SANGAM":
+        return _HALF_SANGAM_DISPLAY_STAGE.get(game_variant, stage)
+    return stage
+
+
 def _entry_out(
     entry: SimulationEntry, code: str, user_name: str | None = None, market_name: str | None = None,
     market_category: str | None = None,
 ) -> SimulationEntryOut:
     return SimulationEntryOut(
         id=entry.id, batchId=entry.batch_id, userId=entry.user_id, userName=user_name, marketId=entry.market_id,
-        marketName=market_name, marketCategory=market_category, slotId=entry.slot_id, gameType=code, stage=entry.stage, selection=entry.selection,
+        marketName=market_name, marketCategory=market_category, slotId=entry.slot_id, gameType=code,
+        stage=_display_stage(code, entry.stage, entry.game_variant), selection=entry.selection,
         gameVariant=entry.game_variant, **_paana_digit_columns(code, entry.stage, entry.selection, entry.game_variant),
         simulatedCredits=entry.simulated_credits, simulatedRate=entry.simulated_rate,
         simulatedReturn=entry.simulated_return, status=entry.status, createdAt=entry.created_at,

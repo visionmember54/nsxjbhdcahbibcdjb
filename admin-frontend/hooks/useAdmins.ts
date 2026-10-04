@@ -15,7 +15,7 @@ export function useAdmins(params: { limit?: number; offset?: number } = {}) {
 export function useCreateAdmin() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { name: string; email: string; password: string; role: string }) =>
+    mutationFn: (payload: { name: string; email: string; password: string; role: string; phone?: string }) =>
       api.post<AdminUser>('/admin/admins', payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admins'] }),
   });
@@ -24,7 +24,8 @@ export function useCreateAdmin() {
 export function useUpdateAdmin() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...payload }: { id: number; status?: string; role?: string }) => api.patch<AdminUser>(`/admin/admins/${id}`, payload),
+    mutationFn: ({ id, ...payload }: { id: number; status?: string; role?: string; phone?: string }) =>
+      api.patch<AdminUser>(`/admin/admins/${id}`, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admins'] });
       // Changing an admin's own role/status must re-check permission-gated

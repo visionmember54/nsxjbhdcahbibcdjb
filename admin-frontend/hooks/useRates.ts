@@ -23,6 +23,15 @@ export function useCreateRate() {
   });
 }
 
+export function useCreateRateBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { market_ids: number[]; slot_id?: number | null; game_type_id: number; rate: number; effective_from: string }) =>
+      api.post<Rate[]>('/admin/rates/bulk', payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['rates'] }),
+  });
+}
+
 export function useUpdateRateStatus() {
   const qc = useQueryClient();
   return useMutation({

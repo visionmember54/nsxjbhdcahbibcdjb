@@ -11,7 +11,7 @@ from app.models.admin import Admin
 from app.models.game_type import GameType
 from app.models.market import Market
 from app.models.rate import Rate
-from app.schemas.rate import RateCreate, RateOut
+from app.schemas.rate import RateBulkCreate, RateCreate, RateOut
 from datetime import datetime, timezone
 from app.models.audit import AuditLog
 
@@ -65,6 +65,45 @@ async def create_rate(
     db.commit()
     db.refresh(rate)
     return _rate_out(rate, game_type.code)
+
+
+@router.post("/bulk", response_model=list[RateOut], status_code=status.HTTP_201_CREATED)
+async def create_rate_bulk(
+    payload: RateBulkCreate,
+    current_admin: Admin = Depends(require_permission("rates.manage")),
+    db: Session = Depends(get_db),
+):
+    """Sets the same rate for one game type across many markets in a single
+    call, so fixing '10 ka 95' or '10 ka 1000' across a whole category
+    doesn't mean opening each market one at a time."""
+    game_type = db.get(GameType, payload.game_type_id)
+    if not game_type:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game type not found")
+
+    markets = db.query(Market).filter(Market.id.in_(payload.market_ids)).all()
+    found_ids = {m.id for m in markets}
+    missing = [mid for mid in payload.market_ids if mid not in found_ids]
+    if missing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Market(s) not found: {missing}")
+
+    created: list[Rate] = []
+    for market_id in payload.market_ids:
+        rate = Rate(
+            market_id=market_id, slot_id=payload.slot_id, game_type_id=payload.game_type_id,
+            rate=payload.rate, effective_from=payload.effective_from, status="Active",
+        )
+        db.add(rate)
+        created.append(rate)
+    db.flush()
+    db.add(AuditLog(
+        actor=current_admin.name, action="rate_bulk_created",
+        details=f"Rate set for {game_type.code} across {len(created)} market(s): {payload.rate}",
+        created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+    ))
+    db.commit()
+    for rate in created:
+        db.refresh(rate)
+    return [_rate_out(rate, game_type.code) for rate in created]
 
 
 @router.patch("/{rate_id}", response_model=RateOut)

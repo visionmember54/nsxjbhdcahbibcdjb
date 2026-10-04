@@ -12,6 +12,7 @@ from app.models.game_type import GameType
 from app.models.market import Market, StarlineSlot
 from app.models.market_result import MarketResult
 from app.models.simulation import SimulationEntry
+from app.models.support import SupportQuery
 from app.models.user import User
 from app.services.app_api_service import ist_day_bounds, slot_status, today_ist
 from app.services.market_service import effective_market_status
@@ -62,6 +63,9 @@ async def get_dashboard(current_admin: Admin = Depends(require_permission("dashb
     deposits_approved = db.query(CreditRequest).filter(
         CreditRequest.request_type == "Deposit", CreditRequest.status == "Approved"
     ).count()
+
+    open_support_tickets = db.query(SupportQuery).filter(SupportQuery.status == "Open").count()
+    pending_support_tickets = db.query(SupportQuery).filter(SupportQuery.status == "Pending").count()
 
     popular_market = (
         db.query(Market.name, func.count(SimulationEntry.id).label("count"))
@@ -146,6 +150,8 @@ async def get_dashboard(current_admin: Admin = Depends(require_permission("dashb
             "withdrawalsApproved": withdrawals_approved,
             "depositsPending": deposits_pending,
             "depositsApproved": deposits_approved,
+            "openSupportTickets": open_support_tickets,
+            "pendingSupportTickets": pending_support_tickets,
         },
         "today": {
             "date": today,

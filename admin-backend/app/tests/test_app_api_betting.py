@@ -76,6 +76,31 @@ def test_starline_bet_by_slot_id_and_variant_time_formats(client, user_headers):
     assert _bet(client, user_headers, marketName="STARLINE 12:00 pm", betType="SINGLE DIGIT", session="OPEN", items=[{"number": "4", "points": 10}]).status_code == 200
 
 
+def test_starline_slots_carry_their_own_market_name_when_multiple_exist(client):
+    """With only one Starline market, the old top-level marketName happened
+    to be right for every slot by coincidence. With a second Starline market
+    (a second 'game'), each slot in the flat list must say which market it's
+    actually from -- not silently inherit the first market's name."""
+    db = TestingSessionLocal()
+    star = db.query(MarketCategory).filter_by(slug="STARLINE").one()
+    second = Market(category_id=star.id, name="MADHUR STARLINE", slug="madhur-starline", status="OPEN", display_order=7)
+    db.add(second)
+    db.flush()
+    second_slot = StarlineSlot(market_id=second.id, slot_name="2:00 PM", start_time=time(14, 0), cutoff_time=time(23, 59, 59), display_order=1)
+    db.add(second_slot)
+    db.commit()
+    db.close()
+
+    resp = client.get("/api/v1/starline/slots")
+    assert resp.status_code == 200, resp.text
+    slots = resp.json()["data"]["slots"]
+
+    by_time = {s["timeLabel"]: s for s in slots}
+    assert by_time["12:00 PM"]["marketName"] == "Starline"
+    assert by_time["2:00 PM"]["marketName"] == "MADHUR STARLINE"
+    assert by_time["12:00 PM"]["marketId"] != by_time["2:00 PM"]["marketId"]
+
+
 def test_starline_bet_is_stored_on_the_slot_and_shows_in_history(client, user_headers):
     _bet(client, user_headers, marketName="KALYAN STARLINE 12:00 PM", betType="SINGLE DIGIT", session="OPEN", items=[{"number": "1", "points": 50}])
     assert _bids(client, user_headers) == []  # no market_type defaults to REGULAR, which excludes Starline
@@ -94,6 +119,39 @@ def test_starline_slot_past_cutoff_is_rejected(client, user_headers):
     assert resp.status_code == 400 and resp.json()["error"] == "SLOT_CLOSED"
 
 
+def test_starline_left_right_jodi_digit_bids_show_distinct_admin_editable_names(client, user_headers):
+    """Unlike Gali-Disawar, Starline's LEFT/RIGHT/JODI DIGIT bets each already
+    map to their own GameType (OPEN/CLOSE/JODI, distinct from the shared
+    SINGLE used for SINGLE DIGIT) -- so they show up as distinct, separately
+    admin-renameable names in bid history without any special-casing."""
+    db = TestingSessionLocal()
+    slot_id = db.query(StarlineSlot).filter_by(slot_name="12:00 PM").one().id
+    market_id = db.query(StarlineSlot).filter_by(id=slot_id).one().market_id
+    gt = {g.code: g.id for g in db.query(GameType).all()}
+    # OPEN/CLOSE aren't in the base test seed (only SINGLE/JODI/panna types
+    # are) -- same as _enable_sangam below, add them here rather than assume
+    # they exist.
+    for code, name in (("OPEN", "Open Ank"), ("CLOSE", "Close Ank")):
+        if code not in gt:
+            new_gt = GameType(code=code, name=name, digit_length=1, classification_rule="NONE")
+            db.add(new_gt)
+            db.flush()
+            gt[code] = new_gt.id
+    for code in ("OPEN", "CLOSE", "JODI"):
+        db.add(GameTypeConfig(market_id=market_id, slot_id=slot_id, game_type_id=gt[code]))
+        db.add(Rate(market_id=market_id, slot_id=slot_id, game_type_id=gt[code], rate=95, effective_from=date(2020, 1, 1), status="Active"))
+    db.commit()
+    db.close()
+
+    assert _bet(client, user_headers, slotId=str(slot_id), betType="LEFT DIGIT", session="OPEN", items=[{"number": "1", "points": 10}]).status_code == 200
+    assert _bet(client, user_headers, slotId=str(slot_id), betType="RIGHT DIGIT", session="CLOSE", items=[{"number": "2", "points": 10}]).status_code == 200
+    assert _bet(client, user_headers, slotId=str(slot_id), betType="JODI DIGIT", items=[{"number": "34", "points": 10}]).status_code == 200
+    assert _bet(client, user_headers, slotId=str(slot_id), betType="SINGLE DIGIT", session="OPEN", items=[{"number": "5", "points": 10}]).status_code == 200
+
+    bids = {b["selection"]: b["gameType"] for b in _bids(client, user_headers, market_type="STARLINE")}
+    assert bids == {"1": "Open Ank", "2": "Close Ank", "34": "Jodi", "5": "Single"}
+
+
 def test_unknown_market_name_still_404(client, user_headers):
     resp = _bet(client, user_headers, marketName="NO SUCH MARKET", betType="SINGLE DIGIT", session="OPEN", items=[{"number": "1", "points": 10}])
     assert resp.status_code == 404
@@ -107,7 +165,7 @@ def test_gali_right_digit_with_open_session_from_the_app(client, user_headers):
                 session="OPEN", numbers=[{"number": "7", "points": 50}, {"number": "8", "points": 50}], totalPoints=100)
     assert resp.status_code == 200, resp.text
     bid = _bids(client, user_headers, market_type="GALI_DESAWAR")[0]
-    assert (bid["gameType"], bid["stage"]) == ("Single", "CLOSE")
+    assert (bid["gameType"], bid["stage"]) == ("Right Digit", "CLOSE")
 
 
 def test_gali_left_digit_and_jodi(client, user_headers):
@@ -115,7 +173,7 @@ def test_gali_left_digit_and_jodi(client, user_headers):
     jodi = _bet(client, user_headers, path="/api/v1/gali-desawar/bets", marketId="DISAWAR", betType="JODI DIGIT", session="OPEN", numbers=[{"number": "45", "points": 10}])
     assert left.status_code == 200 and jodi.status_code == 200, (left.text, jodi.text)
     stages = {(b["gameType"], b["stage"]) for b in _bids(client, user_headers, market_type="GALI_DISAWAR")}
-    assert stages == {("Single", "OPEN"), ("Jodi", None)}
+    assert stages == {("Left Digit", "OPEN"), ("Jodi Digit", None)}
 
 
 # ---- Open/closed rules match the app's session states ---------------------------

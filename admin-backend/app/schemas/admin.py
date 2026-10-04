@@ -13,11 +13,13 @@ class AdminCreate(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=255)
     role: str = Field(default="admin", min_length=1, max_length=30)
+    phone: str | None = Field(default=None, max_length=20, description="Where OTP for payment-setting changes is sent")
 
 
 class AdminUpdate(BaseModel):
     status: Literal["active", "disabled"] | None = None
     role: str | None = Field(default=None, min_length=1, max_length=30)
+    phone: str | None = Field(default=None, max_length=20)
 
 
 class AdminOut(BaseModel):
@@ -26,5 +28,6 @@ class AdminOut(BaseModel):
     email: str
     role: str
     status: str
+    phone: str | None = None
 
     model_config = {"from_attributes": True}

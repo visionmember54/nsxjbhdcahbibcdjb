@@ -15,6 +15,10 @@ class Admin(Base):
     name: Mapped[str] = mapped_column(String(120))
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    # Where OTP verification for sensitive changes (payment settings) is sent --
+    # nullable since not every admin needs it, but required at the point any
+    # admin actually attempts a payment-setting change.
+    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     role: Mapped[str] = mapped_column(String(30), default="admin")
     status: Mapped[str] = mapped_column(String(20), default="active")
     # Bumped on logout / role or status change; tokens carrying an older value are rejected.

@@ -17,6 +17,24 @@ export function useUpdateSiteSetting() {
   });
 }
 
+// Payment settings (UPI id and the rest) are a classic fraud target if an
+// admin session is ever compromised, so they go through their own
+// OTP-verified endpoints instead of the plain settings PUT above.
+export function useSendPaymentSettingsOtp() {
+  return useMutation({
+    mutationFn: () => api.post<{ otpSessionId: string; resendCooldownSeconds: number; message: string }>('/admin/content/settings/payment/send-otp', {}),
+  });
+}
+
+export function useUpdatePaymentSettingsBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { values: Record<string, string>; otp_session_id: string; otp_code: string }) =>
+      api.put<SiteSetting[]>('/admin/content/settings/payment/bulk', payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['siteSettings'] }),
+  });
+}
+
 // --- Homepage banners ---
 export function useBanners() {
   return useQuery({ queryKey: ['banners'], queryFn: () => api.get<HomepageBanner[]>('/admin/content/banners') });

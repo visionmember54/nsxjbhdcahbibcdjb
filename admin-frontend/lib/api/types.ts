@@ -17,6 +17,7 @@ export interface AdminUser {
   role: string;
   status: 'active' | 'disabled';
   permissions: string[];
+  phone?: string | null;
 }
 
 export interface Permission {
@@ -413,6 +414,8 @@ export interface DashboardData {
     withdrawalsApproved: number;
     depositsPending: number;
     depositsApproved: number;
+    openSupportTickets: number;
+    pendingSupportTickets: number;
   };
   today: {
     date: string;

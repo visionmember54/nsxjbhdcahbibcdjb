@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect } from 'react';
 import { useCurrentAdmin, useLogout } from '@/hooks/useAuth';
 import Badge from '@/components/ui/Badge';
+import GlobalSearchBar from './GlobalSearchBar';
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
   const { data: admin } = useCurrentAdmin();
@@ -29,13 +30,16 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200/80 bg-white/80 px-4 py-3 shadow-soft backdrop-blur-md lg:px-8">
-      <button onClick={onMenuClick} className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 lg:hidden" aria-label="Open menu">
-        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-        </svg>
-      </button>
+      <div className="flex items-center gap-4">
+        <button onClick={onMenuClick} className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 lg:hidden" aria-label="Open menu">
+          <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+          </svg>
+        </button>
+        <p className="hidden text-xs font-semibold uppercase tracking-wide text-slate-400 lg:block">Operations Console</p>
+      </div>
 
-      <p className="hidden text-xs font-semibold uppercase tracking-wide text-slate-400 lg:block">Operations Console</p>
+      <GlobalSearchBar />
 
       <div className="flex items-center gap-3">
         <details className="group relative hidden sm:block">

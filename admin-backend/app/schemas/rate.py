@@ -13,6 +13,14 @@ class RateCreate(BaseModel):
     effective_from: date_type
 
 
+class RateBulkCreate(BaseModel):
+    market_ids: list[int] = Field(min_length=1, max_length=500)
+    slot_id: int | None = None
+    game_type_id: int
+    rate: int = Field(gt=0, le=1_000_000, description="Win per 10 credits staked")
+    effective_from: date_type
+
+
 class RateOut(BaseModel):
     id: int
     market_id: int

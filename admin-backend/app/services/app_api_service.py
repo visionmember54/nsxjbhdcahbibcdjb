@@ -129,12 +129,18 @@ def format_result_string(result: MarketResult | None) -> str:
 
 
 def latest_published_result(db: Session, market_id: int, slot_id: int | None = None) -> MarketResult | None:
+    """Scoped to today only -- the home/live listing's result badge should
+    show today's result or the empty placeholder, never fall back to
+    yesterday's (or older) result just because nothing's published yet
+    today. Full history is unaffected: the chart endpoints query
+    MarketResult directly across a date range, not through this helper."""
     query = db.query(MarketResult).filter(
         MarketResult.market_id == market_id,
         MarketResult.slot_id == slot_id,
         MarketResult.status.in_(["Published", "Corrected"]),
+        MarketResult.result_date == today_ist().isoformat(),
     )
-    return query.order_by(MarketResult.result_date.desc(), MarketResult.id.desc()).first()
+    return query.order_by(MarketResult.id.desc()).first()
 
 
 def market_session_status(market: Market) -> tuple[str, bool, bool, bool]:

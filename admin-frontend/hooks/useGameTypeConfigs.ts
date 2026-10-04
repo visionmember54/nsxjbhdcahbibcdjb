@@ -97,6 +97,26 @@ export function useUpdateGameTypeConfig(marketId: number) {
   });
 }
 
+export interface ApplyGameTypeConfigBulkPayload extends Omit<CreateGameTypeConfigPayload, 'slot_id'> {
+  market_ids: number[];
+}
+
+/** Applies one game type's config to many markets in a single call --
+ * creates it where a market doesn't have it yet, updates it in place where
+ * it already does. For categories where every market is meant to offer the
+ * same games (e.g. all of Gali-Disawar), instead of opening each market one
+ * at a time just to enable or tweak the same game type everywhere. */
+export function useApplyGameTypeConfigBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ApplyGameTypeConfigBulkPayload) => api.post<GameTypeConfig[]>('/admin/game-type-configs/bulk', payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['gameTypeConfigs'] });
+      qc.invalidateQueries({ queryKey: ['gameTypeConfigsByCode'] });
+    },
+  });
+}
+
 /** Same PATCH, but for cross-market views (e.g. the per-game-type Game
  * Configuration pages) where marketId varies per row instead of being fixed
  * at hook-call time. */

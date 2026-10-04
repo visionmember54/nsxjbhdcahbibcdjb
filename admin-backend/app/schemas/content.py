@@ -14,6 +14,12 @@ class SiteSettingUpdate(BaseModel):
     value: str
 
 
+class PaymentSettingsBulkUpdate(BaseModel):
+    values: dict[str, str]
+    otp_session_id: str = Field(min_length=1)
+    otp_code: str = Field(min_length=1, max_length=10)
+
+
 class HomepageBannerCreate(BaseModel):
     image_url: str = ""
     title: str = ""

@@ -12,7 +12,8 @@ export type IconKey =
   | 'chart'
   | 'cog'
   | 'coin'
-  | 'clock';
+  | 'clock'
+  | 'search';
 
 const paths: Record<IconKey, React.ReactNode> = {
   home: (
@@ -121,6 +122,12 @@ const paths: Record<IconKey, React.ReactNode> = {
     <>
       <circle cx="12" cy="12" r="8.5" />
       <path d="M12 7v5.3l3.8 2.2" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M20 20l-4.8-4.8" />
     </>
   ),
 };

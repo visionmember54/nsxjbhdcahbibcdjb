@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from datetime import date
+
+from app.models.game_type import GameType, GameTypeConfig
+from app.models.rate import Rate
 from app.models.simulation import SimulationEntry
 from app.tests.conftest import TestingSessionLocal
 
@@ -50,6 +54,38 @@ def test_panna_lands_in_paana_columns_by_session(client, auth_headers, user_head
     _place(client, user_headers, mid, "SINGLE PANA", session="OPEN", number="128")
     entry = _latest_entry(client, auth_headers)
     assert entry["openPaana"] == "128" and entry["closePaana"] is None
+
+
+def _enable_sangam(market_id: int) -> None:
+    db = TestingSessionLocal()
+    try:
+        half = GameType(code="HALF_SANGAM", name="Half Sangam", digit_length=5, classification_rule="SANGAM_HALF")
+        db.add(half)
+        db.flush()
+        db.add(GameTypeConfig(market_id=market_id, game_type_id=half.id, stage="BOTH"))
+        db.add(Rate(market_id=market_id, game_type_id=half.id, rate=95, effective_from=date(2020, 1, 1), status="Active"))
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_half_sangam_stage_is_derived_from_variant_not_the_null_db_stage(client, auth_headers, user_headers):
+    """Half Sangam only ever resolves once both open and close are published,
+    so SimulationEntry.stage is always None for it -- bid history still shows
+    Open/Close, derived from which side carries the panna vs the ank."""
+    mid = _testgame_id(client, auth_headers)
+    _enable_sangam(mid)
+    client.post("/simulations", headers=user_headers, json={
+        "market_id": mid, "game_type": "HALF_SANGAM", "value": "128-1", "game_variant": "OPEN_PANNA_CLOSE_ANK", "credits": 10,
+    })
+    entry = _latest_entry(client, auth_headers)
+    assert entry["stage"] == "CLOSE"
+
+    client.post("/simulations", headers=user_headers, json={
+        "market_id": mid, "game_type": "HALF_SANGAM", "value": "470-1", "game_variant": "OPEN_ANK_CLOSE_PANNA", "credits": 10,
+    })
+    entry = _latest_entry(client, auth_headers)
+    assert entry["stage"] == "OPEN"
 
 
 def test_edit_pending_bid_corrects_selection_credits_and_balance(client, auth_headers, user_headers):

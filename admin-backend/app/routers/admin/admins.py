@@ -48,6 +48,7 @@ async def create_admin(
         password_hash=hash_password(payload.password),
         role=payload.role,
         status="active",
+        phone=payload.phone,
     )
     db.add(admin)
     db.flush()
@@ -75,6 +76,8 @@ async def update_admin(
     if payload.role is not None:
         _assert_role_exists(db, payload.role)
         admin.role = payload.role
+    if payload.phone is not None:
+        admin.phone = payload.phone
     if payload.status is not None or payload.role is not None:
         admin.token_version += 1  # revoke existing sessions so the new role/status applies immediately
     db.flush()

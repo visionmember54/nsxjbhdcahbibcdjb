@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.core import ratelimit
 from app.core.deps import get_current_admin, get_db, require_permission
 from app.models.admin import Admin
 from app.models.content import EducationalContent, FAQ, HomepageBanner, ScrollingMessage, SiteSetting
@@ -16,16 +17,28 @@ from app.schemas.content import (
     HomepageBannerCreate,
     HomepageBannerOut,
     HomepageBannerUpdate,
+    PaymentSettingsBulkUpdate,
     ScrollingMessageCreate,
     ScrollingMessageOut,
     ScrollingMessageUpdate,
     SiteSettingOut,
     SiteSettingUpdate,
 )
+from app.services import firebase_service, otp_service
 from datetime import datetime, timezone
 from app.models.audit import AuditLog
 
 router = APIRouter(prefix="/admin/content", tags=["content"])
+
+# Changing where payments actually go (the UPI id above all) is a classic
+# fraud vector if an admin session is ever compromised -- these keys cannot be
+# changed through the plain settings endpoint below; they require the
+# OTP-verified bulk endpoint instead.
+PAYMENT_SETTING_KEYS = {
+    "payment_upi_id", "payment_merchant_name", "payment_instructions",
+    "payment_min_deposit", "payment_max_deposit", "payment_min_withdrawal",
+}
+_ADMIN_PAYMENT_OTP_PURPOSE = "admin_payment_settings"
 
 
 # --- Site settings (support contact info, hero image, ...) ---
@@ -40,6 +53,12 @@ async def update_setting(
     current_admin: Admin = Depends(require_permission("content.settings")),
     db: Session = Depends(get_db),
 ):
+    if key in PAYMENT_SETTING_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Payment settings require OTP verification -- use POST /admin/content/settings/payment/send-otp "
+            "then PUT /admin/content/settings/payment/bulk",
+        )
     setting = db.query(SiteSetting).filter(SiteSetting.key == key).first()
     if not setting:
         setting = SiteSetting(key=key, value=payload.value)
@@ -51,6 +70,68 @@ async def update_setting(
     db.commit()
     db.refresh(setting)
     return SiteSettingOut.model_validate(setting)
+
+
+@router.post("/settings/payment/send-otp")
+async def send_payment_settings_otp(
+    request: Request,
+    current_admin: Admin = Depends(require_permission("content.settings")),
+):
+    """Sends an OTP to this admin's own registered phone before letting them
+    change where payments go. If this admin has no phone on file, there's
+    nowhere safe to send it -- set one first via Admins > Edit."""
+    if not current_admin.phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No phone number on file for your admin account. Ask a super admin to set one before changing payment settings.",
+        )
+    ratelimit.check_otp_send_allowed(request, current_admin.phone)
+    session_id, cooldown, code = otp_service.issue_otp(current_admin.phone, purpose=_ADMIN_PAYMENT_OTP_PURPOSE)
+    ratelimit.record_otp_send(request, current_admin.phone)
+    if firebase_service.otp_relay_configured():
+        firebase_service.send_otp_to_relay(current_admin.phone, code)
+        message = "OTP sent"
+    else:
+        message = "OTP issued -- check the backend server console (no OTP relay device configured)"
+    return {"otpSessionId": session_id, "resendCooldownSeconds": cooldown, "message": message}
+
+
+@router.put("/settings/payment/bulk", response_model=list[SiteSettingOut])
+async def update_payment_settings_bulk(
+    payload: PaymentSettingsBulkUpdate,
+    current_admin: Admin = Depends(require_permission("content.settings")),
+    db: Session = Depends(get_db),
+):
+    unknown = set(payload.values) - PAYMENT_SETTING_KEYS
+    if unknown:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Not a payment setting: {sorted(unknown)}")
+    if not current_admin.phone:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No phone number on file for your admin account")
+
+    verified_phone = otp_service.verify_otp(payload.otp_session_id, payload.otp_code, purpose=_ADMIN_PAYMENT_OTP_PURPOSE)
+    if not verified_phone or verified_phone != current_admin.phone:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
+    otp_service.consume_otp(payload.otp_session_id)
+
+    updated: list[SiteSetting] = []
+    for key, value in payload.values.items():
+        setting = db.query(SiteSetting).filter(SiteSetting.key == key).first()
+        if not setting:
+            setting = SiteSetting(key=key, value=value)
+            db.add(setting)
+        else:
+            setting.value = value
+        updated.append(setting)
+    db.flush()
+    db.add(AuditLog(
+        actor=current_admin.name, action="payment_settings_updated",
+        details=f"OTP-verified payment settings updated: {sorted(payload.values)}",
+        created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+    ))
+    db.commit()
+    for setting in updated:
+        db.refresh(setting)
+    return [SiteSettingOut.model_validate(s) for s in updated]
 
 
 # --- Homepage banners ---

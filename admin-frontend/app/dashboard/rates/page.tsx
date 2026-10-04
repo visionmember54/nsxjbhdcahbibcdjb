@@ -6,15 +6,76 @@ import { Card } from '@/components/ui/Card';
 import { Table, TBody, Td, Th, THead, Tr } from '@/components/ui/Table';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/States';
 import Badge from '@/components/ui/Badge';
-import { FormField, Select } from '@/components/ui/Field';
-import { useRates, useUpdateRateStatus } from '@/hooks/useRates';
+import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
+import { FormField, Input, Select } from '@/components/ui/Field';
+import { useRates, useUpdateRateStatus, useCreateRateBulk } from '@/hooks/useRates';
+import { useGameTypes } from '@/hooks/useGameTypes';
 import { useMarketsLookup } from '@/hooks/useMarketsLookup';
+import MarketMultiSelect from '@/components/markets/MarketMultiSelect';
+import { todayLocalIso } from '@/lib/date';
+
+function BulkSetRateModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { markets } = useMarketsLookup();
+  const { data: gameTypes } = useGameTypes();
+  const bulkCreate = useCreateRateBulk();
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [gameTypeId, setGameTypeId] = useState<number | ''>('');
+  const [rate, setRate] = useState('');
+  const [effectiveFrom, setEffectiveFrom] = useState(todayLocalIso());
+
+  return (
+    <Modal open={open} onClose={onClose} title="Set a rate across multiple markets">
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!gameTypeId || selected.size === 0) return;
+          await bulkCreate.mutateAsync({
+            market_ids: Array.from(selected),
+            game_type_id: Number(gameTypeId),
+            rate: Number(rate),
+            effective_from: effectiveFrom,
+          });
+          setSelected(new Set());
+          onClose();
+        }}
+      >
+        <FormField label="Markets">
+          <MarketMultiSelect markets={markets} selected={selected} onChange={setSelected} />
+        </FormField>
+        <FormField label="Game type">
+          <Select required value={gameTypeId} onChange={(e) => setGameTypeId(Number(e.target.value))}>
+            <option value="" disabled>
+              Select…
+            </option>
+            {gameTypes?.map((gt) => (
+              <option key={gt.id} value={gt.id}>
+                {gt.code}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        <FormField label="Rate (win per 10 credits bet)">
+          <Input value={rate} onChange={(e) => setRate(e.target.value)} type="number" min={1} required placeholder="e.g. 95 or 1000" />
+        </FormField>
+        <FormField label="Effective from">
+          <Input value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} type="date" required />
+        </FormField>
+        {bulkCreate.isError && <p className="mb-2 text-xs text-red-600">{(bulkCreate.error as Error).message}</p>}
+        <Button type="submit" loading={bulkCreate.isPending} disabled={selected.size === 0 || !gameTypeId} className="w-full">
+          Apply to {selected.size || ''} market{selected.size === 1 ? '' : 's'}
+        </Button>
+      </form>
+    </Modal>
+  );
+}
 
 export default function SimulatedRatesPage() {
   const { markets, byId } = useMarketsLookup();
   const [marketId, setMarketId] = useState<number | ''>('');
   const { data: rates, isLoading, isError, error } = useRates(marketId || null);
   const updateStatus = useUpdateRateStatus();
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   return (
     <div>
@@ -22,7 +83,9 @@ export default function SimulatedRatesPage() {
         icon="percent"
         title="Simulated Rates"
         description="Win per 10 credits bet, time-versioned via effective_from. The 'current' rate is the latest already-effective Active row."
+        action={<Button onClick={() => setBulkOpen(true)}>Bulk set rate</Button>}
       />
+      <BulkSetRateModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
       <Card>
         <div className="border-b border-slate-100 p-4">
           <FormField label="Filter by market">
@@ -80,7 +143,7 @@ export default function SimulatedRatesPage() {
         )}
       </Card>
       <p className="mt-3 text-xs text-slate-400">
-        To add a new rate for a market, open that market from the Markets section — rates are configured alongside its game types.
+        Use "Bulk set rate" above to apply one rate across several markets at once, or open an individual market from the Markets section to set just its own.
       </p>
     </div>
   );

@@ -6,7 +6,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { FormField, Input, Textarea } from '@/components/ui/Field';
 import Button from '@/components/ui/Button';
 import { LoadingState } from '@/components/ui/States';
-import { useSiteSettings, useUpdateSiteSetting } from '@/hooks/useContent';
+import { useSiteSettings, useSendPaymentSettingsOtp, useUpdatePaymentSettingsBulk } from '@/hooks/useContent';
 
 const TEXT_FIELDS: { key: string; label: string; placeholder: string }[] = [
   { key: 'payment_upi_id', label: 'UPI ID', placeholder: 'e.g. kalyanmerchant@icici' },
@@ -23,8 +23,12 @@ const ALL_KEYS = [...TEXT_FIELDS, ...NUMBER_FIELDS, { key: 'payment_instructions
 
 export default function PaymentSettingsPage() {
   const { data: settings, isLoading } = useSiteSettings();
-  const updateSetting = useUpdateSiteSetting();
+  const sendOtp = useSendPaymentSettingsOtp();
+  const updateBulk = useUpdatePaymentSettingsBulk();
   const [values, setValues] = useState<Record<string, string>>({});
+  const [otpSessionId, setOtpSessionId] = useState<string | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -43,7 +47,7 @@ export default function PaymentSettingsPage() {
       />
       <Card>
         <CardHeader>
-          <CardTitle subtitle="Saved to site settings, read live by the app's /wallet/payment-config endpoint">
+          <CardTitle subtitle="Saved to site settings, read live by the app's /wallet/payment-config endpoint. Changing these requires an OTP sent to your own admin phone, to confirm it's really you.">
             UPI &amp; deposit configuration
           </CardTitle>
         </CardHeader>
@@ -54,7 +58,17 @@ export default function PaymentSettingsPage() {
               className="grid gap-4"
               onSubmit={async (e) => {
                 e.preventDefault();
-                await Promise.all(ALL_KEYS.map((f) => updateSetting.mutateAsync({ key: f.key, value: values[f.key] ?? '' })));
+                setSaved(false);
+                if (!otpSessionId) {
+                  const resp = await sendOtp.mutateAsync();
+                  setOtpSessionId(resp.otpSessionId);
+                  return;
+                }
+                const toSave = Object.fromEntries(ALL_KEYS.map((f) => [f.key, values[f.key] ?? '']));
+                await updateBulk.mutateAsync({ values: toSave, otp_session_id: otpSessionId, otp_code: otpCode });
+                setOtpSessionId(null);
+                setOtpCode('');
+                setSaved(true);
               }}
             >
               <div className="grid gap-4 sm:grid-cols-2">
@@ -92,11 +106,33 @@ export default function PaymentSettingsPage() {
                 />
               </FormField>
 
+              {otpSessionId && (
+                <FormField label="Enter the OTP sent to your admin phone">
+                  <Input value={otpCode} onChange={(e) => setOtpCode(e.target.value)} placeholder="6-digit code" maxLength={10} autoFocus />
+                </FormField>
+              )}
+
               <div>
-                {updateSetting.isSuccess && <p className="mb-2 text-xs text-emerald-600">Saved. The app will pick this up on its next request.</p>}
-                <Button type="submit" loading={updateSetting.isPending}>
-                  Save all
-                </Button>
+                {saved && <p className="mb-2 text-xs text-emerald-600">Saved. The app will pick this up on its next request.</p>}
+                {sendOtp.isError && <p className="mb-2 text-xs text-red-600">{(sendOtp.error as Error).message}</p>}
+                {updateBulk.isError && <p className="mb-2 text-xs text-red-600">{(updateBulk.error as Error).message}</p>}
+                <div className="flex items-center gap-3">
+                  <Button type="submit" loading={sendOtp.isPending || updateBulk.isPending} disabled={!!otpSessionId && !otpCode}>
+                    {otpSessionId ? 'Confirm & save' : 'Send OTP to save'}
+                  </Button>
+                  {otpSessionId && (
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-slate-500 hover:underline"
+                      onClick={() => {
+                        setOtpSessionId(null);
+                        setOtpCode('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             </form>
           )}

@@ -384,8 +384,10 @@ def home_dashboard(
             "user": user_payload,
             "appConfig": {
                 "noticeMarquee": notice_marquee,
+                "supportPhone": settings.get("support_phone", ""),
                 "supportWhatsApp": settings.get("support_whatsapp", ""),
                 "supportTelegram": settings.get("support_telegram", ""),
+                "supportEmail": settings.get("support_email", ""),
                 "appShareUrl": settings.get("app_share_url", ""),
             },
             "banners": [
@@ -409,7 +411,7 @@ def config_bootstrap(appVersion: str | None = None, platform: str | None = None,
     for gt in game_types:
         _, label = shape.game_mode_slug_label(gt.code)
         rate_value = shape.representative_rate(db, gt.id) or 95
-        rates_summary.append({"game": label, "rate": f"10 KA {rate_value}"})
+        rates_summary.append({"game": label, "rate": f"10-{rate_value}"})
 
     min_bid = db.query(func.min(GameTypeConfig.min_credits)).filter(GameTypeConfig.enabled.is_(True)).scalar() or 10
 
@@ -431,8 +433,10 @@ def config_bootstrap(appVersion: str | None = None, platform: str | None = None,
                 "ratesSummary": rates_summary,
             },
             "support": {
+                "phone": settings.get("support_phone", ""),
                 "whatsapp": settings.get("support_whatsapp", ""),
                 "telegram": settings.get("support_telegram", ""),
+                "email": settings.get("support_email", ""),
                 "shareUrl": settings.get("app_share_url", ""),
             },
         },
@@ -447,7 +451,7 @@ def config_game_rates(db: Session = Depends(get_db)):
     for gt in game_types:
         _, label = shape.game_mode_slug_label(gt.code)
         rate_value = shape.representative_rate(db, gt.id) or 95
-        rows.append({"title": label, "payout": f"10 KA {rate_value}", "multiplier": round(rate_value / 10, 2)})
+        rows.append({"title": label, "payout": f"10-{rate_value}", "multiplier": round(rate_value / 10, 2)})
     return _ok({"rates": rows}, message="Rates loaded")
 
 
@@ -659,6 +663,8 @@ def starline_slots(db: Session = Depends(get_db)):
             out.append(
                 {
                     "slotId": str(slot.id),
+                    "marketId": str(market.id),
+                    "marketName": market.name,
                     "timeLabel": shape.format_time(slot.start_time),
                     "result": result_str,
                     "status": st,
@@ -668,6 +674,10 @@ def starline_slots(db: Session = Depends(get_db)):
             )
     return _ok(
         {
+            # Kept for backward compat -- just the first Starline market's
+            # name. With more than one Starline market configured, each slot
+            # above now carries its own marketId/marketName so the app can
+            # tell which market (game) a given slot actually belongs to.
             "marketName": markets[0].name if markets else "STARLINE",
             "payoutRatio": shape.payout_ratio(db, markets[0].id) if markets else "10:95",
             "drawDate": shape.today_ist().isoformat(),
@@ -795,16 +805,91 @@ _HISTORY_DATE_FMT = "%d-%m-%Y"
 _EARLIEST_HISTORY_DATE = date(2020, 1, 1)
 
 
-def _entry_out(entry: SimulationEntry, game_type_name: str, market_name: str, mask_status: bool = False) -> dict:
+def _sangam_columns(game_type_code: str, stage: str | None, selection: str, game_variant: str | None) -> dict[str, str | None]:
+    """Same split as the admin panel's _paana_digit_columns (admin/simulations.py)
+    -- kept as its own copy here because the two use different field-naming
+    conventions (openPana/closePana here, to match what the app itself already
+    sends when placing a Half/Full Sangam bet; openPaana/closePaana there,
+    the admin panel's long-standing internal naming)."""
+    columns: dict[str, str | None] = {"openPana": None, "openDigit": None, "closePana": None, "closeDigit": None}
+    if game_type_code in ("SINGLE_PANNA", "DOUBLE_PANNA", "TRIPLE_PANNA"):
+        if stage == "CLOSE":
+            columns["closePana"] = selection
+        else:
+            columns["openPana"] = selection
+    elif game_type_code == "JODI":
+        if len(selection) == 2:
+            columns["openDigit"], columns["closeDigit"] = selection[0], selection[1]
+    elif game_type_code == "HALF_SANGAM":
+        parts = selection.split("-")
+        if len(parts) == 2:
+            panna, ank = parts
+            if game_variant == "OPEN_ANK_CLOSE_PANNA":
+                columns["openDigit"], columns["closePana"] = ank, panna
+            else:
+                columns["openPana"], columns["closeDigit"] = panna, ank
+    elif game_type_code == "FULL_SANGAM":
+        parts = selection.split("-")
+        if len(parts) == 2:
+            columns["openPana"], columns["closePana"] = parts[0], parts[1]
+    else:
+        if stage == "CLOSE":
+            columns["closeDigit"] = selection
+        else:
+            columns["openDigit"] = selection
+    return columns
+
+
+# Gali-Disawar has no separate Left/Right/Jodi Digit game types of its own --
+# per GALI_DIGIT_BETS above, left/right digit are both stored as the SINGLE
+# game type, distinguished only by stage, and Jodi Digit as JODI with no
+# stage. That means there's no admin-editable name to tell them apart in
+# history (unlike Starline/Matka, where LEFT DIGIT/RIGHT DIGIT already map to
+# their own distinct, admin-renameable OPEN/CLOSE game types). This fills
+# that specific gap with the same wording the app itself uses as betType.
+_GALI_DISAWAR_LABELS: dict[tuple[str, str | None], str] = {
+    ("SINGLE", "OPEN"): "Left Digit",
+    ("SINGLE", "CLOSE"): "Right Digit",
+    ("JODI", None): "Jodi Digit",
+}
+
+
+# Half Sangam never carries a real stage (it only ever resolves once both
+# open and close are published, see _resolve_winning_value in
+# result_service.py), so entry.stage is always None for it. Bid history still
+# needs an Open/Close label like every other game type gets, so it's derived
+# from which side carries the panna vs the ank: open panna + close digit is
+# the "Close" bet, open digit + close panna is the "Open" bet.
+_HALF_SANGAM_DISPLAY_STAGE: dict[str | None, str] = {
+    "OPEN_ANK_CLOSE_PANNA": "OPEN",
+    "OPEN_PANNA_CLOSE_ANK": "CLOSE",
+}
+
+
+def _display_stage(game_type_code: str, stage: str | None, game_variant: str | None) -> str | None:
+    if game_type_code == "HALF_SANGAM":
+        return _HALF_SANGAM_DISPLAY_STAGE.get(game_variant, stage)
+    return stage
+
+
+def _entry_out(
+    entry: SimulationEntry, game_type_name: str, market_name: str, mask_status: bool = False,
+    game_type_code: str = "", is_gali_disawar: bool = False,
+) -> dict:
+    display_stage = _display_stage(game_type_code, entry.stage, entry.game_variant)
+    game_type_label = game_type_name
+    if is_gali_disawar:
+        game_type_label = _GALI_DISAWAR_LABELS.get((game_type_code, entry.stage), game_type_name)
     return {
         "id": str(entry.id),
         "batchId": str(entry.batch_id),
         "marketId": str(entry.market_id),
         "marketName": market_name,
-        "gameType": game_type_name,
-        "stage": entry.stage,
+        "gameType": game_type_label,
+        "stage": display_stage,
         "selection": entry.selection,
         "gameVariant": entry.game_variant,
+        **_sangam_columns(game_type_code, entry.stage, entry.selection, entry.game_variant),
         "simulatedCredits": entry.simulated_credits,
         "simulatedRate": entry.simulated_rate,
         "simulatedReturn": entry.simulated_return,
@@ -866,9 +951,23 @@ def _history_page(
     total = query.count()
     offset = max(0, (page - 1) * limit)
     entries = query.order_by(SimulationEntry.id.desc()).limit(limit).offset(offset).all()
-    game_types = {g.id: g.name for g in db.query(GameType).all()}
+    all_game_types = db.query(GameType).all()
+    game_types = {g.id: g.name for g in all_game_types}
+    game_type_codes = {g.id: g.code for g in all_game_types}
     markets = {m.id: m.name for m in db.query(Market).all()}
-    items = [_entry_out(e, game_types.get(e.game_type_id, ""), markets.get(e.market_id, ""), mask_status=mask_status) for e in entries]
+    gali_disawar_market_ids = {
+        m_id for (m_id,) in db.query(Market.id).join(MarketCategory, MarketCategory.id == Market.category_id)
+        .filter(MarketCategory.slug == "GALI_DISAWAR")
+        .all()
+    }
+    items = [
+        _entry_out(
+            e, game_types.get(e.game_type_id, ""), markets.get(e.market_id, ""), mask_status=mask_status,
+            game_type_code=game_type_codes.get(e.game_type_id, ""),
+            is_gali_disawar=e.market_id in gali_disawar_market_ids,
+        )
+        for e in entries
+    ]
     return items, total
 
 
